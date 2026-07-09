@@ -1,0 +1,815 @@
+/* ==========================================================================
+   styles.css — Layout & Component Styles (token-driven)
+   --------------------------------------------------------------------------
+   Blitzy Platform 2.0 · "Branch pagination + search"
+
+   SECOND stylesheet linked in index.html (AFTER css/tokens.css). Every color,
+   font metric, radius, and spacing value below resolves to a CSS custom
+   property declared in css/tokens.css via var(--token). This file provides ALL
+   layout + component styling for the single 1440x1024 wizard page:
+     - Static page chrome (R8): app bar, project header, wizard stepper,
+       section nav, select controls, usage pill, avatar, buttons.
+     - Branch-selector panel visual styling (R1-R7): panel, scroll body, tree
+       rows, search row, empty state, and confirmation bar.
+
+   Interaction/behavior lives in js/branch-selector.js and js/app.js. The branch
+   rows / search / empty-state / confirmation-bar DOM is rendered at runtime by
+   JS into the empty `#branch-selector` container, so the dynamic class names
+   below are a strict coordination contract (AAP agent_prompt §2).
+
+   RULES HONORED (AAP §0.8 / agent_prompt §1):
+     - Plain vanilla CSS. No preprocessor/framework/build. No @import, no
+       @font-face, no external/CDN references. Relative asset paths only.
+     - Token-driven: no hardcoded hex colors, font sizes/weights/line-heights,
+       radii (4/8/12/24/32/36/100), or spacing (4/8/12/16/24/32/48). Those are
+       ALWAYS var(--token). Only structural keywords (0/none/auto/transparent/
+       inherit/currentColor), layout primitives (flex/grid/%/fr/1fr/center/...),
+       and the fixed one-off geometry permitted by agent_prompt §16 are literals.
+     - NO shadows, NO gradients anywhere (the design contains none).
+     - Scrollbar chrome is HIDDEN (no visible scrollbar in the design).
+     - No invented UI: no spinner/skeleton/"Loading…", no numbered pager, no
+       "Load more"/next/previous control, no match-substring highlight, no
+       empty-state icon/illustration.
+
+   PERMITTED ONE-OFF GEOMETRY LITERALS (agent_prompt §16 — structural, not theme):
+     64px app-bar height · 400px panel height · 24px tree indent unit ·
+     16px tree/chevron icon box · 24px confirmation check box · 28x4 active-step
+     underline · 28px step circle (pairs with the 28px underline) · 40x40 icon
+     button · 32x32 avatar · 20px primary-button file icon · 1px/0.5px borders ·
+     opacity 0.5 (disabled) · rotate(90deg) (expanded chevron) · layout %/fr.
+
+   CLASS-NAME CONTRACT
+     Authoritative dynamic classes (MUST match js/branch-selector.js):
+       .branch-tree · .tree-row (+ --folder/--repo/--branch/--action/--selected/
+       --expanded, [aria-expanded="true"]) · .tree-row__indent/__chevron/__icon/
+       __label · .search-row (+ --action/--active) · .search-row__icon/__input/
+       __clear · .empty-state · .confirmation-bar/__icon/__path/__check.
+     Static top-level classes (declared by index.html):
+       .app-bar · .project-header · ol.wizard-stepper · .layout · nav.section-nav
+       · main · h2.section-heading · .select-control (+ --workspace/--repository/
+       --environment) · .usage-pill · .avatar · .btn/.btn--primary[disabled]/
+       .btn--icon · section#branch-selector.branch-selector.
+     Introduced BEM sub-classes (documented deviations, permitted by §2 — align
+     index.html to these):
+       .app-bar__group/__logo/__icon · .project-header__title/__actions ·
+       .wizard-step/__circle/__label/__underline (+ .is-active / [aria-current="step"])
+       · .section-nav__item/__check (+ .is-active / [aria-current]) ·
+       .select-control__label/__icon · .usage-pill__segment (+ --left/--right)/
+       __code/__used/__total · .search-row__label.
+
+   INDENTATION MECHANISM (tree rows / search rows / empty state):
+     Indent = depth × 24px. Implemented BOTH ways so JS may use either:
+       (a) padding-left: calc(var(--space-12) + var(--depth,0) * 24px)  [exact]
+       (b) .tree-row__indent spacer cells (24px each)                   [preferred]
+     Prefer (a) for pixel-exact indent (gap-independent). `--branch-depth: 4`
+     (a plain count, confirmed from js/data.js) is defined on .branch-tree so
+     branch-level elements (search row, empty state) align to the branch indent
+     even when JS does not set --depth on them.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Phase 1 — Reset & page base (agent_prompt §3)
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Full-viewport page background so the centered 1440px column has matching
+     gutters on wider viewports. */
+  background: var(--color-page-bg);
+}
+
+body {
+  /* Fixed desktop frame: implement at 1440px, centered. The internal columns
+     fill available width via %/fr/flex (see .layout / main / .branch-selector). */
+  max-width: 1440px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: var(--space-24) var(--space-32) var(--space-48);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+
+  background: var(--color-page-bg);
+  color: var(--color-text-primary);
+
+  /* Base body typography (text-body). */
+  font-family: var(--font-family-base);
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin: 0;
+}
+
+ol,
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* Page section layout: aside (section nav) + main content column that fills. */
+.layout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-32);
+  align-items: start;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  min-width: 0; /* allow the fill column to shrink so children can truncate */
+}
+
+.section-heading {
+  /* "Codebase context" main heading — text-h5 (Inter 600 / 24px / 1.3). */
+  font-weight: var(--font-weight-h5);
+  font-size: var(--font-size-h5);
+  line-height: var(--line-height-h5);
+  color: var(--color-text-strong);
+}
+
+/* --------------------------------------------------------------------------
+   Phase 2 — App bar (Figma 48966:64340) (agent_prompt §4)
+   -------------------------------------------------------------------------- */
+.app-bar {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-32);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-8);
+}
+
+/* Left/right clusters within the bar (brand+workspace | usage+help+settings+avatar). */
+.app-bar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+}
+
+/* Blitzy logo. Glyph color is baked into the SVG asset (accent); the token
+   color here supports inline/currentColor usage and documents intent. */
+.app-bar__logo {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+/* Help / settings icon controls (#666666 baked into the SVG assets). */
+.app-bar__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-icon-medium);
+}
+
+/* --------------------------------------------------------------------------
+   Phase 3 — Project header & buttons (Figma 48966:64379) (agent_prompt §5)
+   -------------------------------------------------------------------------- */
+.project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+}
+
+.project-header__title {
+  /* text-h4 (Inter 600 / 32px / 1.3). */
+  font-weight: var(--font-weight-h4);
+  font-size: var(--font-size-h4);
+  line-height: var(--line-height-h4);
+  color: var(--color-text-strong);
+}
+
+.project-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+/* Button base. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-family-base);
+}
+
+/* Primary "Build tech spec" button — DISABLED in this design. */
+.btn--primary {
+  padding: var(--space-8) var(--space-16);
+  background: var(--color-accent);
+  color: var(--color-surface);
+  border-radius: var(--radius-32);
+  font-weight: var(--font-weight-button);
+  font-size: var(--font-size-button);
+  line-height: var(--line-height-button);
+}
+
+.btn--primary[disabled],
+.btn--primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Leading white file icon inside the primary button (file.svg is 20x20). */
+.btn--primary img,
+.btn--primary svg {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Icon-only buttons (chat / group / more) — glyph color is baked into the SVG
+   assets (accent). */
+.btn--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: var(--radius-36);
+  background: transparent;
+  color: var(--color-accent);
+  flex: 0 0 auto;
+}
+
+/* --------------------------------------------------------------------------
+   Phase 4 — Wizard stepper (Figma 48966:64385) (agent_prompt §6)
+   6 steps, horizontal. Active step (step 1): filled accent circle + white
+   numeral + strong label + 28x4 accent underline. Inactive: outlined circle +
+   secondary numeral/label.
+   -------------------------------------------------------------------------- */
+.wizard-stepper {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-32);
+}
+
+.wizard-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding-bottom: var(--space-8); /* room for the active underline */
+  /* text-nav label (Inter 600 / 16px / 1.3); default (inactive) secondary. */
+  font-weight: var(--font-weight-nav);
+  font-size: var(--font-size-nav);
+  line-height: var(--line-height-nav);
+  color: var(--color-text-secondary);
+}
+
+.wizard-step__circle {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-100);
+  background: transparent;
+  border: 1px solid var(--color-border-control);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-nav);
+  font-size: var(--font-size-nav);
+  line-height: var(--line-height-nav);
+}
+
+.wizard-step__label {
+  color: inherit;
+}
+
+/* Underline is only rendered/visible for the active step. */
+.wizard-step__underline {
+  display: none;
+}
+
+.wizard-step.is-active,
+.wizard-step[aria-current="step"] {
+  color: var(--color-text-strong);
+}
+
+.wizard-step.is-active .wizard-step__circle,
+.wizard-step[aria-current="step"] .wizard-step__circle {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-surface);
+}
+
+.wizard-step.is-active .wizard-step__underline,
+.wizard-step[aria-current="step"] .wizard-step__underline {
+  display: block;
+  position: absolute;
+  left: 0; /* aligns under the 28px circle (first flex child) */
+  bottom: 0;
+  width: 28px;
+  height: 4px;
+  background: var(--color-accent);
+}
+
+/* --------------------------------------------------------------------------
+   Phase 5 — Section navigation (Figma 48966:64436) (agent_prompt §7)
+   Vertical list; pill is transparent in ALL states. Active: accent text +
+   trailing check. Default: primary text, no check.
+   -------------------------------------------------------------------------- */
+.section-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section-nav__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
+  border-radius: var(--radius-36);
+  background: transparent;
+  cursor: pointer;
+  /* text-nav (Inter 600 / 16px / 1.3); default primary. */
+  font-weight: var(--font-weight-nav);
+  font-size: var(--font-size-nav);
+  line-height: var(--line-height-nav);
+  color: var(--color-text-primary);
+}
+
+/* Trailing active check (nav-check.svg, accent) — hidden unless active. */
+.section-nav__check {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+}
+
+.section-nav__item.is-active,
+.section-nav__item[aria-current] {
+  color: var(--color-accent);
+}
+
+.section-nav__item.is-active .section-nav__check,
+.section-nav__item[aria-current] .section-nav__check {
+  display: inline-flex;
+}
+
+/* --------------------------------------------------------------------------
+   Phase 6 — Select controls (workspace 48966:64345, repository 48966:64451)
+   (agent_prompt §8)
+   -------------------------------------------------------------------------- */
+.select-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-32);
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Environment variant uses the smaller 24px radius. */
+.select-control--environment {
+  border-radius: var(--radius-24);
+}
+
+.select-control__label {
+  /* text-body. */
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.select-control__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+/* --------------------------------------------------------------------------
+   Phase 7 — Usage pill (Figma 48966:64349) (agent_prompt §9)
+   Two adjoined segments inside one bordered pill. Left: </> icon + text accent.
+   Right: used value strong + "/ total" secondary. A 1px divider separates the
+   two segments (the visual boundary implied by the split corner radii).
+   -------------------------------------------------------------------------- */
+.usage-pill {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden; /* clip the segment corners to the pill outline */
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-24);
+}
+
+.usage-pill__segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-12);
+  /* text-body. */
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+}
+
+.usage-pill__segment--left {
+  border-radius: var(--radius-24) 0 0 var(--radius-24);
+  color: var(--color-accent);
+}
+
+.usage-pill__segment--right {
+  border-radius: 0 var(--radius-24) var(--radius-24) 0;
+  border-left: 1px solid var(--color-border-control);
+  color: var(--color-text-strong);
+}
+
+/* Used value (strong) and the "/ total" suffix (secondary). */
+.usage-pill__used {
+  color: var(--color-text-strong);
+}
+
+.usage-pill__total {
+  color: var(--color-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Phase 8 — Profile avatar (Figma 48966:64363) (agent_prompt §10)
+   -------------------------------------------------------------------------- */
+.avatar {
+  width: 32px;
+  height: 32px;
+  display: inline-block;
+  overflow: hidden;
+  border-radius: var(--radius-100);
+  border: 0.5px solid var(--color-avatar-stroke);
+  flex: 0 0 auto;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+
+/* --------------------------------------------------------------------------
+   Phase 9 — Branch-selector panel + scroll pagination (Figma 48966:64459)
+   (agent_prompt §11) — R1 / R2
+   Fixed 400px panel with an internal vertical-scroll body. The fixed-height
+   scroll IS the pagination affordance (R2): additional branch rows are revealed
+   by scrolling. No pager / "Load more" / next-prev / spinner. Scrollbar chrome
+   is hidden. `position: relative` anchors the pinned confirmation bar.
+   -------------------------------------------------------------------------- */
+.branch-selector {
+  position: relative;
+  width: 100%;
+  height: 400px;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-12);
+}
+
+.branch-tree {
+  /* Local structural indent constants (not theme tokens):
+       --branch-depth : depth of branch rows (confirmed 4 from js/data.js)
+     The 24px indent unit is a permitted one-off geometry literal (§16). */
+  --branch-depth: 4;
+
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-12) 0;
+
+  /* Hide the scrollbar chrome (no visible scrollbar in the design). */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge/IE */
+}
+
+.branch-tree::-webkit-scrollbar {
+  display: none; /* WebKit / Blink */
+}
+
+/* When a confirmation bar is pinned at the bottom, shrink the scroll viewport
+   so tree rows never pass behind the (transparent) bar. Two hooks are provided:
+   the native :has() selector, and an explicit modifier class JS may toggle. */
+.branch-selector:has(.confirmation-bar) .branch-tree,
+.branch-selector--confirmed .branch-tree {
+  height: calc(100% - var(--space-48));
+}
+
+/* --------------------------------------------------------------------------
+   Phase 10 — Tree rows (folder 48966:64461, branch 48966:64524,
+   action 48966:64504) (agent_prompt §12) — R1 / R7
+   -------------------------------------------------------------------------- */
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-12);
+  /* Exact depth indent (gap-independent). JS sets --depth per row; folders sit
+     at depths 0-3, branches/actions at depth 4. Spacer cells (.tree-row__indent)
+     are also supported for the alternative rendering path. */
+  padding-left: calc(var(--space-12) + var(--depth, 0) * 24px);
+  background: transparent;
+  cursor: pointer;
+  /* text-body; folder/repo/branch labels are primary (#333333). */
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+  color: var(--color-text-primary);
+}
+
+/* 24px depth spacer (alternative indent path; JS emits `depth` of them). */
+.tree-row__indent {
+  flex: 0 0 24px;
+  width: 24px;
+  align-self: stretch;
+}
+
+/* Chevron cell — rotates 90deg when its row/group is expanded. */
+.tree-row__chevron {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-row--expanded .tree-row__chevron,
+[aria-expanded="true"] .tree-row__chevron {
+  transform: rotate(90deg);
+}
+
+/* 16px icon cell (folder / folder-open / repo / git-branch). */
+.tree-row__icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-row__chevron img,
+.tree-row__chevron svg,
+.tree-row__icon img,
+.tree-row__icon svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.tree-row__label {
+  min-width: 0;
+  color: inherit; /* primary for folder/repo/branch; accent for action rows */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Action rows ("New branch", "Search" action-link): icon + label accent. The
+   icon fill is baked into the SVG; the token color drives the label text and
+   any inline/currentColor icon. */
+.tree-row--action {
+  color: var(--color-accent);
+}
+
+/* Selected branch row — the ONLY selection cue is the background fill. No
+   border, no bold weight, no radius change; the label stays primary. */
+.tree-row--selected {
+  background: var(--color-row-selected);
+}
+
+
+/* --------------------------------------------------------------------------
+   Phase 11 — Search row (action 48966:64514 / active 48966:61545)
+   (agent_prompt §13) — R3 / R4 / R6
+   The "Search" row toggles between a collapsed action-link and an active input.
+   It is laid out like an action tree row and sits at the branch indent.
+   -------------------------------------------------------------------------- */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-12);
+  /* Align to the branch indent; JS may override via --depth. */
+  padding-left: calc(var(--space-12) + var(--depth, var(--branch-depth, 4)) * 24px);
+}
+
+/* Collapsed action-link: magnifier + "Search" label, accent. */
+.search-row--action {
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.search-row__label {
+  /* text-body label for the collapsed action-link (inherits accent color). */
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+  color: inherit;
+}
+
+/* Active input: transparent fill, bottom-only divider, no radius, no focus box. */
+.search-row--active {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border-control);
+  border-radius: 0;
+}
+
+.search-row--active:focus-within {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Magnifier stays accent (baked into search.svg; token supports currentColor). */
+.search-row__icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+}
+
+.search-row__icon img,
+.search-row__icon svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Typed text is strong (#000000); no border, no outline, no focus box. */
+.search-row__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  color: var(--color-text-strong);
+  /* text-search (Inter 500 / 16px / 1.5). */
+  font-family: var(--font-family-base);
+  font-weight: var(--font-weight-search);
+  font-size: var(--font-size-search);
+  line-height: var(--line-height-search);
+}
+
+/* Placeholder "Search" is secondary (#999999). */
+.search-row__input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1; /* normalize Firefox's reduced placeholder opacity */
+}
+
+/* Clear "×" is strong (#000000, baked into close.svg). */
+.search-row__clear {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-strong);
+}
+
+.search-row__clear img,
+.search-row__clear svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* --------------------------------------------------------------------------
+   Phase 12 — Empty state (Figma 48966:70337) (agent_prompt §14) — R5
+   Text-only "Branch not found", secondary color, left-aligned to the branch
+   indent. NO icon, NO illustration, NO background.
+   -------------------------------------------------------------------------- */
+.empty-state {
+  padding: var(--space-4) var(--space-12);
+  padding-left: calc(var(--space-12) + var(--depth, var(--branch-depth, 4)) * 24px);
+  background: transparent;
+  color: var(--color-text-secondary);
+  /* text-body (Inter 400 / 16px / 1.5 / -0.0188em). */
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+}
+
+/* --------------------------------------------------------------------------
+   Phase 13 — Confirmation bar (Figma 48966:68383) (agent_prompt §15) — R7
+   Pinned footer at the panel bottom: transparent over the white card, top-only
+   border, bottom corners rounded to the panel radius. git-branch icon + full
+   path text (primary) + accent check-circle (24x24).
+   -------------------------------------------------------------------------- */
+.confirmation-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  background: transparent;
+  border-top: 1px solid var(--color-border-control);
+  border-radius: 0 0 var(--radius-12) var(--radius-12);
+}
+
+.confirmation-bar__icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmation-bar__path {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--color-text-primary);
+  /* text-body. */
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.confirmation-bar__check {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+}
+
+.confirmation-bar__icon img,
+.confirmation-bar__icon svg,
+.confirmation-bar__check img,
+.confirmation-bar__check svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
