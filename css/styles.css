@@ -547,9 +547,10 @@ main {
   gap: var(--space-4);
   padding: var(--space-4) var(--space-12);
   /* Exact depth indent (gap-independent). JS sets --depth per row; folders sit
-     at depths 0-3, branches/actions at depth 4. Spacer cells (.tree-row__indent)
-     are also supported for the alternative rendering path. */
-  padding-left: calc(var(--space-12) + var(--depth, 0) * 24px);
+     at depths 0-3, branches/actions at depth 4. One indent level = a 24px cell
+     plus the 4px inter-cell gap = 28px (Figma reconciled spec: chevron cell x =
+     12 + depth*28). Leaf rows (branch/action) add a reserved chevron slot below. */
+  padding-left: calc(var(--space-12) + var(--depth, 0) * (var(--space-24) + var(--space-4)));
   background: transparent;
   cursor: pointer;
   /* text-body; folder/repo/branch labels are primary (#333333). */
@@ -567,11 +568,12 @@ main {
   align-self: stretch;
 }
 
-/* Chevron cell — rotates 90deg when its row/group is expanded. */
+/* Chevron cell — 24x24 cell holding a 16px glyph (Figma: glyph centered, 4px
+   inset). Rotates 90deg when its row/group is expanded. */
 .tree-row__chevron {
-  flex: 0 0 16px;
-  width: 16px;
-  height: 16px;
+  flex: 0 0 var(--space-24);
+  width: var(--space-24);
+  height: var(--space-24);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -582,11 +584,12 @@ main {
   transform: rotate(90deg);
 }
 
-/* 16px icon cell (folder / folder-open / repo / git-branch). */
+/* 24x24 icon cell holding a 16px glyph (folder / folder-open / repo /
+   git-branch), centered with a 4px inset per the Figma reconciled spec. */
 .tree-row__icon {
-  flex: 0 0 16px;
-  width: 16px;
-  height: 16px;
+  flex: 0 0 var(--space-24);
+  width: var(--space-24);
+  height: var(--space-24);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -596,8 +599,8 @@ main {
 .tree-row__chevron svg,
 .tree-row__icon img,
 .tree-row__icon svg {
-  width: 100%;
-  height: 100%;
+  width: var(--space-16);
+  height: var(--space-16);
   object-fit: contain;
   display: block;
 }
@@ -615,6 +618,19 @@ main {
    any inline/currentColor icon. */
 .tree-row--action {
   color: var(--color-accent);
+}
+
+/* Leaf rows (branch, action) carry NO chevron cell. Reserve the chevron slot
+   (one 24px cell + 4px gap = 28px) so a leaf's type-icon aligns with a same-depth
+   folder's type-icon. Per the Figma reconciled spec a depth-4 leaf icon sits at
+   x = 12 + 5*28 = 152 (under the parent repo LABEL), not under the repo icon. */
+.tree-row--branch,
+.tree-row--action {
+  padding-left: calc(
+    var(--space-12) +
+    var(--depth, 0) * (var(--space-24) + var(--space-4)) +
+    (var(--space-24) + var(--space-4))
+  );
 }
 
 /* Selected branch row — the ONLY selection cue is the background fill. No
@@ -635,8 +651,13 @@ main {
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-12);
-  /* Align to the branch indent; JS may override via --depth. */
-  padding-left: calc(var(--space-12) + var(--depth, var(--branch-depth, 4)) * 24px);
+  /* Align the magnifier to the branch/action icon column (Figma x=152 at depth 4):
+     28px per depth + a reserved chevron slot (this row has no chevron cell). */
+  padding-left: calc(
+    var(--space-12) +
+    var(--depth, var(--branch-depth, 4)) * (var(--space-24) + var(--space-4)) +
+    (var(--space-24) + var(--space-4))
+  );
 }
 
 /* Collapsed action-link: magnifier + "Search" label, accent. */
@@ -667,11 +688,13 @@ main {
   box-shadow: none;
 }
 
-/* Magnifier stays accent (baked into search.svg; token supports currentColor). */
+/* Magnifier stays accent (baked into search.svg; token supports currentColor).
+   24x24 cell with a 16px glyph, matching the tree-row icon cell so the magnifier
+   aligns with the "+" (New branch) and the branch git-branch icons. */
 .search-row__icon {
-  flex: 0 0 16px;
-  width: 16px;
-  height: 16px;
+  flex: 0 0 var(--space-24);
+  width: var(--space-24);
+  height: var(--space-24);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -680,8 +703,8 @@ main {
 
 .search-row__icon img,
 .search-row__icon svg {
-  width: 100%;
-  height: 100%;
+  width: var(--space-16);
+  height: var(--space-16);
   object-fit: contain;
   display: block;
 }
@@ -696,16 +719,25 @@ main {
   outline: none;
   box-shadow: none;
   color: var(--color-text-strong);
-  /* text-search (Inter 500 / 16px / 1.5). */
+  /* Figma search-text node 48966:62187: the field's BASE textStyle is Inter
+     Medium 500 (that base applies only to the caret "|"), but the VISIBLE typed
+     characters carry a ts1 override to Inter Regular 400 — identical to the
+     "Search" placeholder weight. So render visible typed text at 400 to match
+     Figma exactly; size/line-height keep the text-search token (16px / 1.5em). */
   font-family: var(--font-family-base);
-  font-weight: var(--font-weight-search);
+  font-weight: var(--font-weight-body);
   font-size: var(--font-size-search);
   line-height: var(--line-height-search);
+  letter-spacing: var(--letter-spacing-body);
 }
 
-/* Placeholder "Search" is secondary (#999999). */
+/* Placeholder "Search" is Inter Regular 400 (#999999) per Figma ts1 override
+   (48966:61554). The input now also resolves to 400, so this weight is
+   inherited; it is restated explicitly to document the placeholder intent and
+   stay robust if the input weight ever changes. */
 .search-row__input::placeholder {
   color: var(--color-text-secondary);
+  font-weight: var(--font-weight-body);
   opacity: 1; /* normalize Firefox's reduced placeholder opacity */
 }
 
@@ -739,7 +771,14 @@ main {
    -------------------------------------------------------------------------- */
 .empty-state {
   padding: var(--space-4) var(--space-12);
-  padding-left: calc(var(--space-12) + var(--depth, var(--branch-depth, 4)) * 24px);
+  /* Text-only row (no icon). Align the message with the branch LABEL column
+     (Figma: left-aligned to the depth-4 branch-label column, x=180). That is two
+     cells beyond the depth indent: the reserved chevron slot + the (absent) icon
+     slot, each a 24px cell + 4px gap. */
+  padding-left: calc(
+    var(--space-12) +
+    (var(--depth, var(--branch-depth, 4)) + 2) * (var(--space-24) + var(--space-4))
+  );
   background: transparent;
   color: var(--color-text-secondary);
   /* text-body (Inter 400 / 16px / 1.5 / -0.0188em). */
