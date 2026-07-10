@@ -1,0 +1,528 @@
+/* ============================================================================
+ * branch-list.css — Component styles & states for "Branch pagination + search"
+ * ----------------------------------------------------------------------------
+ * Feature:  "Branch pagination + search" static frontend.
+ * Source:   Figma "Blitzy-Platform-2.0" (fileKey 91TpUu5OYVLFkPdcBCmOUu),
+ *           frame 48966:14667 — reconciled component specs (Technical Spec §0.2).
+ *
+ * This is the VISUAL realization of the Figma design. It owns NO tokenized raw
+ * values: every color / spacing / radius / typography value that has a manifest
+ * token resolves to a `var(--…)` custom property declared in css/tokens.css
+ * (loaded FIRST). The only literals present are the CSS-universal keywords
+ * (0, none, auto, inherit, currentColor, transparent), a handful of one-off
+ * STRUCTURAL dimensions (centralized as local `--branch-tree-*` custom
+ * properties immediately below), 1px control borders, and non-visual
+ * accessibility primitives (visually-hidden utility, focus-ring widths).
+ *
+ * Constraints (Technical Spec §0.5, §0.9):
+ *   - Plain CSS only: no preprocessor, no PostCSS, no build step, no CDN.
+ *   - EXACT Figma values: no rounding, snapping, or approximation.
+ *   - No shadows, no gradients anywhere (the design has none).
+ *   - No invented UI: no loading indicator (spinner/skeleton/progress), no
+ *     matched-substring highlight, no per-row selection checkmark.
+ *   - Icons are <img> elements whose colors are BAKED INTO the SVG assets; this
+ *     stylesheet only SIZES/positions them and never recolors via filter/mask.
+ *
+ * ----------------------------------------------------------------------------
+ * SELECTOR / HOOK CONTRACT (must match public/index.html + public/js exactly):
+ *   #branch-tree / .branch-tree ............. bordered 400px container
+ *   #tree-list  / .branch-tree__list ........ the ONLY scrolling region (role=tree)
+ *   .tree-row ............................... folder / repository rows (have chevron)
+ *   .new-branch-row ......................... "New branch" action row
+ *   .branch-row ............................. branch leaf rows
+ *   #search-affordance / .search-affordance . collapsed "Search" affordance
+ *   #search-input-row / .search-input-row ... open inline search input row,
+ *       containing #branch-search-input (<input type="search">) + clear <button>
+ *   .empty-state ............................ "Branch not found" message
+ *   #search-status.sr-only .................. aria-live result/empty announcement
+ *   #pagination-sentinel .................... IntersectionObserver target
+ *   #load-more .............................. keyboard "Load more" a11y fallback
+ *   #confirmation-footer / .branch-tree__footer  pinned selection footer
+ *
+ * State hooks toggled by JS (styled here):
+ *   folder rows expanded ......... aria-expanded="true"  (rotates the chevron)
+ *   selected rows ................ .is-selected AND/OR [aria-selected="true"]
+ *   hidden elements .............. the `hidden` attribute
+ *
+ * INDENTATION CONTRACT (Figma pixel-exact; coordinate with public/js/tree.js):
+ *   Each row carries an inline `style="--row-depth:N"` where N is the node's
+ *   depth (0-5) from public/js/data.js. Depth indentation is applied as
+ *   padding-left; each icon/chevron is a 16px glyph centered inside a 24px slot
+ *   (the .branch-tree__icon / .branch-tree__chevron boxes). Row structure:
+ *     - folder/repo  (.tree-row):        [chevron box][icon box][label]
+ *     - branch/action/search rows:       [icon box][content]      (no chevron)
+ *     - empty state  (.empty-state):     [text]                   (no icon)
+ *   The per-row padding-left formulas (see each component below) reproduce the
+ *   exact Figma offsets: customer-portal(depth3) label @152px, branch(depth4)
+ *   label @180px, "Branch not found"(depth4) text @180px.
+ * ==========================================================================*/
+
+/* ----------------------------------------------------------------------------
+ * Global box-sizing reset (light, non-invasive).
+ * ------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ----------------------------------------------------------------------------
+ * Page shell — PREVIEW ONLY.
+ * Provides a neutral page background and centers the branch-list container so
+ * public/index.html can be previewed standalone. The surrounding application
+ * shell (App Bar, wizard, left nav, provider select) is intentionally NOT
+ * rebuilt here — it is out of scope (Technical Spec §0.8.2).
+ * ------------------------------------------------------------------------- */
+body {
+  margin: 0;
+  padding: var(--space-panel);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: var(--color-page-bg);
+  font: var(--text-tree-row);
+  font-family: var(--font-family-base);
+  color: var(--color-text-primary);
+}
+
+/* ----------------------------------------------------------------------------
+ * .sr-only — visually-hidden utility (non-visual a11y layer).
+ * Used by #search-status (aria-live) and #load-more; removes the element from
+ * the visual layout while keeping it available to assistive technology.
+ * ------------------------------------------------------------------------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================================================
+ * BranchTreeContainer — the bordered 400px panel (Figma 48966:72006).
+ * The container is a flex column of exactly two children: the scrolling list
+ * (.branch-tree__list) and the optional pinned footer (.branch-tree__footer).
+ * Making the list flex-grow and the footer flex-none pins the footer to the
+ * container bottom and lets the list reflow when the footer is toggled via the
+ * `hidden` attribute — while `overflow: hidden` clips content (incl. the
+ * footer's rounded bottom corners) to the 12px container radius.
+ *
+ * The `--branch-tree-*` custom properties below centralize the few one-off
+ * STRUCTURAL dimensions that intentionally have no manifest token (Technical
+ * Spec §0.2.3). They are scoped locally here and are NOT added to tokens.css.
+ * ========================================================================== */
+.branch-tree {
+  /* Structural (non-tokenized) dimensions — local to this component only. */
+  --branch-tree-height: 400px;   /* fixed container height (clips overflow)   */
+  --branch-tree-width: 1000px;   /* container width (~1000px per Figma)       */
+  --branch-tree-icon-slot: 24px; /* square slot each 16px icon is centered in */
+  --branch-tree-icon-size: 16px; /* rendered icon glyph size                  */
+  --branch-tree-check-size: 24px;/* confirmation check-circle (larger icon)   */
+  --branch-tree-footer-height: 48px; /* pinned confirmation footer height     */
+  --branch-tree-footer-gap: 8px;     /* footer icon/text/check gap            */
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: var(--branch-tree-width);
+  max-width: 100%;
+  height: var(--branch-tree-height);
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-container);
+  /* Inter + system fallback; every descendant row inherits this. */
+  font-family: var(--font-family-base);
+}
+
+/* ----------------------------------------------------------------------------
+ * Inner scroll list (Figma 48966:72007) — the ONLY scrolling element and the
+ * IntersectionObserver root. Native scroll, no custom scrollbar chrome (the
+ * design is a pure clip at 400px — Technical Spec §0.2 W1).
+ * ------------------------------------------------------------------------- */
+.branch-tree__list {
+  flex: 1 1 auto;
+  min-height: 0;             /* allow the flex child to shrink and scroll     */
+  overflow-y: auto;
+  padding: var(--space-list-pad-v) 0;
+  margin: 0;
+  list-style: none;          /* harmless if the list uses <ul>/<li> semantics */
+}
+
+/* ============================================================================
+ * Icon boxes — a 16px SVG glyph centered inside a 24px slot (4px inset each
+ * side), reproducing the Figma icon cells. Icons are <img> elements with their
+ * color BAKED INTO the SVG asset; this stylesheet never recolors them.
+ * ========================================================================== */
+.branch-tree__chevron,
+.branch-tree__icon {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--branch-tree-icon-slot);
+  height: var(--branch-tree-icon-slot);
+  /* Inset = (slot - glyph) / 2 = (24px - 16px) / 2 = 4px, centering the glyph. */
+  padding: calc((var(--branch-tree-icon-slot) - var(--branch-tree-icon-size)) / 2);
+  display: block;
+  object-fit: contain;
+}
+
+/* Generic safety net: any raw icon <img>/<svg> inside the tree renders at the
+ * 16px glyph size (in case markup omits the explicit icon-box class). */
+.branch-tree img,
+.branch-tree svg {
+  flex: 0 0 auto;
+}
+
+/* Confirmation check-circle is a larger 24px glyph that fills its slot (no
+ * inset). Targeted by class and, as a fallback, by the known asset filename. */
+.branch-tree__check,
+.branch-tree img[src$="icon_check_circle.svg"] {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--branch-tree-check-size);
+  height: var(--branch-tree-check-size);
+  padding: 0;
+  display: block;
+  object-fit: contain;
+}
+
+/* ============================================================================
+ * Row base — shared geometry & typography for every tree/branch/action/search
+ * row (Figma template: 32px tall, padding 4px/12px, 4px gap, 16px body text).
+ * Includes <button> resets so an interactive row works whether it is rendered
+ * as a <div> or a <button>. padding-left (depth indent) is set per row type.
+ * ========================================================================== */
+.tree-row,
+.new-branch-row,
+.branch-row,
+.search-affordance,
+.search-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-row-gap);
+  width: 100%;
+  padding: var(--space-row-v) var(--space-row-h);
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-row);
+  color: var(--color-text-primary);
+  font: var(--text-tree-row);
+  letter-spacing: var(--text-tree-row-letter-spacing);
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+/* Row label text fills the remaining width (matches Figma "Fill" sizing) and
+ * never wraps a single tree/branch label. */
+.tree-row__label,
+.branch-row__label,
+.new-branch-row__label,
+.search-affordance__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+ * TreeRow — folder & repository rows (Figma 48966:72073). They carry a chevron
+ * box, so depth indentation is exactly depth × step.
+ * ========================================================================== */
+.tree-row {
+  padding-left: calc(var(--space-row-h) + var(--row-depth, 0) * var(--space-indent-step));
+}
+
+/* Hover & selected share the full-width, square-cornered lavender highlight. */
+.tree-row:hover,
+.tree-row.is-selected,
+.tree-row[aria-selected="true"] {
+  background: var(--color-row-highlight);
+}
+
+/* Expanded folders: rotate the disclosure chevron 90° (asset is stored
+ * un-rotated; rotation is CSS-only). Targeted by class + filename fallback. */
+.tree-row[aria-expanded="true"] .branch-tree__chevron,
+.tree-row[aria-expanded="true"] img[src$="icon_chevron_right.svg"] {
+  transform: rotate(90deg);
+}
+
+/* Optional, minimal disclosure micro-interaction; does not change static
+ * end-states (right when collapsed, down when expanded). */
+.branch-tree__chevron,
+.tree-row img[src$="icon_chevron_right.svg"] {
+  transition: transform 120ms ease;
+}
+
+/* ============================================================================
+ * NewBranchRow — "New branch" action (Figma 48966:72051). Chevron-less, so it
+ * gains one extra indent step to align its icon with the branch icon column.
+ * Plus icon (asset-purple) + purple label.
+ * ========================================================================== */
+.new-branch-row {
+  padding-left: calc(var(--space-row-h) + (var(--row-depth, 0) + 1) * var(--space-indent-step));
+  color: var(--color-brand-purple);
+}
+
+/* ============================================================================
+ * SearchAffordanceRow — the resting "Search" affordance (Figma 48966:67318).
+ * Purple magnifier (asset) + purple "Search" label (Inter Regular 400).
+ * Transparent by default; hover paints the full-width, square lavender band.
+ * NO bottom divider and NO input in this state.
+ * ========================================================================== */
+.search-affordance {
+  padding-left: calc(var(--space-row-h) + (var(--row-depth, 0) + 1) * var(--space-indent-step));
+  color: var(--color-brand-purple);
+}
+
+.search-affordance:hover {
+  background: var(--color-row-highlight);
+}
+
+/* Keyboard-only focus ring — a non-visual a11y layer that does not alter the
+ * resting design (inset so it never overflows the container edge). */
+.search-affordance:focus-visible {
+  outline: 2px solid var(--color-brand-purple);
+  outline-offset: -2px;
+}
+
+/* ============================================================================
+ * SearchInputRow — the active inline search field (Figma 48966:72061 /
+ * 48966:70647). Box-less: no fill, NO radius, a single 1px bottom underline.
+ * Leading purple magnifier (asset), an unstyled native search input, and a
+ * trailing clear-× button.
+ * ========================================================================== */
+.search-input-row {
+  padding-left: calc(var(--space-row-h) + (var(--row-depth, 0) + 1) * var(--space-indent-step));
+  border-bottom: 1px solid var(--color-border-control);
+  border-radius: 0;
+  cursor: text;
+}
+
+/* The native <input type="search"> stripped of all UA chrome so it reads as a
+ * bare, box-less field. The search-input baseline (--text-search-base = Inter
+ * Medium 500 family/size/line-height) is applied first, then font-weight is
+ * overridden to 400 so the TYPED QUERY renders Inter Regular 400 — matching the
+ * Figma "Inter Regular 400 span" for the query (Technical Spec §0.2.2) and the
+ * surrounding tree-row body weight; only the design's caret glyph is Medium 500.
+ * Matched by the documented #branch-search-input hook AND, defensively, by its
+ * structural context so the styling holds regardless of the id being present. */
+#branch-search-input,
+.search-input-row input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--color-text-black);
+  caret-color: var(--color-text-black);
+  font: var(--text-search-base);
+  font-weight: var(--text-tree-row-weight);
+  letter-spacing: var(--text-tree-row-letter-spacing);
+}
+
+/* Placeholder = Inter Regular 400 in muted gray (lighter than typed text). */
+#branch-search-input::placeholder,
+.search-input-row input[type="search"]::placeholder {
+  color: var(--color-text-muted);
+  font-weight: var(--text-tree-row-weight);
+  opacity: 1;                 /* Firefox dims placeholders by default */
+}
+
+/* Remove WebKit's built-in magnifier/clear affordances so only our own icons
+ * are shown. */
+#branch-search-input::-webkit-search-decoration,
+#branch-search-input::-webkit-search-cancel-button,
+#branch-search-input::-webkit-search-results-button,
+#branch-search-input::-webkit-search-results-decoration,
+.search-input-row input[type="search"]::-webkit-search-decoration,
+.search-input-row input[type="search"]::-webkit-search-cancel-button,
+.search-input-row input[type="search"]::-webkit-search-results-button,
+.search-input-row input[type="search"]::-webkit-search-results-decoration {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Accessible focus indicator only (no resting box/background/shadow). */
+#branch-search-input:focus-visible,
+.search-input-row input[type="search"]:focus-visible {
+  outline: 2px solid var(--color-brand-purple);
+  outline-offset: 2px;
+}
+
+/* Trailing clear-× button — transparent, chrome-less; the × glyph color is
+ * baked into the SVG asset (black). */
+.search-input-row .search-clear,
+.search-input-row button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  color: var(--color-text-black);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.search-input-row .search-clear:focus-visible,
+.search-input-row button:focus-visible {
+  outline: 2px solid var(--color-brand-purple);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+ * BranchRow — branch leaves (Figma 48966:67971). Chevron-less, so it gains one
+ * extra indent step. git-branch icon is #999999 (baked in the asset) and the
+ * label uses the default primary text color inherited from the row base.
+ * ========================================================================== */
+.branch-row {
+  padding-left: calc(var(--space-row-h) + (var(--row-depth, 0) + 1) * var(--space-indent-step));
+}
+
+/* Hover mirrors the documented TreeRow hover highlight (full-width, square). */
+.branch-row:hover {
+  background: var(--color-row-highlight);
+}
+
+/* Selected branch: full-width lavender band, radius 0, TEXT UNCHANGED.
+ * There is deliberately NO per-row checkmark — the only check indicator is the
+ * check-circle in the confirmation footer. Both selection hooks are styled. */
+.branch-row.is-selected,
+.branch-row[aria-selected="true"] {
+  background: var(--color-row-highlight);
+}
+
+/* ============================================================================
+ * EmptyState — the "Branch not found" message (Figma 48966:70337). A single
+ * left-aligned line in muted gray, aligned to the branch LABEL column (branch
+ * indent + icon slot + gap). NO icon, NO illustration.
+ * ========================================================================== */
+.empty-state {
+  margin: 0;
+  padding: var(--space-row-v) var(--space-row-h);
+  /* Text sits at the branch-label column: base indent + icon slot + gap,
+   * expressed as two extra indent steps beyond the row padding. */
+  padding-left: calc(var(--space-row-h) + (var(--row-depth, 0) + 2) * var(--space-indent-step));
+  color: var(--color-text-muted);
+  font: var(--text-tree-row);
+  letter-spacing: var(--text-tree-row-letter-spacing);
+  text-align: left;
+}
+
+/* ============================================================================
+ * ConfirmationFooter — pinned bottom bar shown when a branch is selected
+ * (Figma 48966:68383). It is a SIBLING of the scroll list inside the flex
+ * column container, so it stays pinned to the container's bottom edge and the
+ * list scrolls above it. Full width, TOP border only, bottom-corner radius.
+ * ========================================================================== */
+.branch-tree__footer {
+  flex: 0 0 auto;            /* never shrinks; sits below the scrolling list  */
+  display: flex;
+  align-items: center;
+  gap: var(--branch-tree-footer-gap);
+  width: 100%;
+  min-height: var(--branch-tree-footer-height);
+  padding: var(--space-row-h);
+  background: var(--color-surface);   /* opaque so scrolled rows don't show through */
+  border-top: 1px solid var(--color-border-control);
+  border-radius: var(--radius-footer-bottom);
+  color: var(--color-text-primary);
+  font: var(--text-tree-row);
+  letter-spacing: var(--text-tree-row-letter-spacing);
+}
+
+/* Full branch path fills the space between the leading git-branch icon and the
+ * trailing check-circle (matches Figma "Fill" sizing / space-between look). */
+.branch-tree__footer-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+/* ============================================================================
+ * Pagination & accessibility utilities — NO invented UI. The design paginates
+ * as a pure clip at 400px with native scroll: there is no spinner, skeleton,
+ * "loading more" row, count badge, or progress bar anywhere.
+ * ========================================================================== */
+
+/* IntersectionObserver target: a zero-footprint 1px sentinel appended after the
+ * last branch row. It must never affect the visible layout. */
+#pagination-sentinel {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: transparent;
+  border: 0;
+}
+
+/* Keyboard "Load more" fallback — visually hidden (accessibility only) so it
+ * never appears in the resting design, but reachable via Tab and revealed on
+ * focus for keyboard users (standard skip-link reveal pattern). */
+#load-more {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  background: transparent;
+  color: var(--color-brand-purple);
+  font: var(--text-tree-row);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Reveal the fallback into normal flow only when it receives keyboard focus. */
+#load-more:focus,
+#load-more:focus-visible {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: var(--space-row-v) var(--space-row-h);
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+  outline: 2px solid var(--color-brand-purple);
+  outline-offset: -2px;
+}
+
+/* ----------------------------------------------------------------------------
+ * [hidden] enforcement — elements whose resting display is flex/grid need an
+ * explicit override, because `display: flex|grid` otherwise defeats the UA
+ * `[hidden] { display: none }` rule. This guarantees the JS-toggled `hidden`
+ * attribute reliably hides the footer, the inactive search input, the search
+ * affordance, the empty state, and any row.
+ * -------------------------------------------------------------------------- */
+[hidden] {
+  display: none !important;
+}
