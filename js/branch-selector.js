@@ -278,7 +278,15 @@
    * clear "×" <button> appears; css/styles.css draws the bottom-only divider.
    */
   function buildSearchActiveRow(state, depth) {
-    var row = makeEl('div', 'search-row search-row--active');
+    // R3/§5.8: the active search row REPLACES the collapsed "Search" treeitem in
+    // the tree, so it must preserve treeitem semantics (role + aria-level) to keep
+    // the ARIA tree contract intact. The row carries tabindex="-1"; the inner
+    // <input> remains the actual focus/roving target (see focusTargetOf).
+    var row = makeEl('div', 'search-row search-row--active', {
+      role: 'treeitem',
+      'aria-level': String(depth + 1),
+      tabindex: '-1'
+    });
     setDepth(row, depth);
 
     var icon = makeEl('span', 'search-row__icon');
@@ -391,9 +399,48 @@
     clearBranchArea(state);
     state.renderedCount = 0;
     appendBranchPage(state, false); // first page — no announcement
+    // R7: if a branch is currently selected, ensure enough pages are rendered
+    // that the selected row is present in the restored unfiltered list. Its
+    // #F2F0FE highlight is the ONLY selection cue, so the row must exist in the
+    // DOM even when the selection was made from a filtered result beyond the
+    // first page (e.g. branch-16); otherwise the highlight would vanish once the
+    // search closes. Runs BEFORE setupPagination so the sentinel is placed after
+    // whatever remainder is left (or omitted entirely once all rows are shown).
+    ensureSelectedRendered(state);
     setupPagination(state);
     recomputeVisibility(state);
     ensureRovingTarget(state);
+  }
+
+  /**
+   * Append additional unfiltered pages (silently — no live-region announcement)
+   * until the currently selected branch has been rendered, or the branch list
+   * is exhausted. No-op when nothing is selected or the selected path is not in
+   * the current list. The loop is bounded by the branch count so it can never
+   * spin, and stops early if a page adds nothing.
+   */
+  function ensureSelectedRendered(state) {
+    if (!state.selectedPath) {
+      return;
+    }
+    var targetIndex = -1;
+    for (var i = 0; i < state.branches.length; i++) {
+      if (state.branches[i].path === state.selectedPath) {
+        targetIndex = i;
+        break;
+      }
+    }
+    if (targetIndex === -1) {
+      return; // selected path not in this list — nothing to render through
+    }
+    var guard = state.branches.length + 1;
+    while (state.renderedCount <= targetIndex &&
+           state.renderedCount < state.branches.length &&
+           guard-- > 0) {
+      if (appendBranchPage(state, false) === 0) {
+        break;
+      }
+    }
   }
 
   /**
@@ -877,12 +924,30 @@
     var target = event.target;
     var key = event.key;
 
-    // While typing in the active search input keep native behaviour (caret
-    // movement, editing); only Escape closes the search (R6).
+    // While typing in the active search input, most keys keep native behaviour
+    // (caret movement, text editing). Three keys are intercepted for the ARIA
+    // tree pattern (§5.8): Escape closes the search (R6); ArrowDown/ArrowUp move
+    // roving focus OUT of the input and INTO the (filtered) branch rows so
+    // keyboard users can reach and select results after typing (R4). All other
+    // keys fall through to native single-line input editing.
     if (target && target.classList && target.classList.contains('search-row__input')) {
       if (key === 'Escape') {
         event.preventDefault();
         dismissSearch(state, true);
+        return;
+      }
+      if (key === 'ArrowDown' || key === 'ArrowUp') {
+        event.preventDefault();
+        // Flush any pending debounced filter first so navigation targets the
+        // CURRENT results rather than a stale render. The active search row (and
+        // its input) is preserved across the re-render, so focus stays valid.
+        if (state.debounceTimer) {
+          clearTimeout(state.debounceTimer);
+          state.debounceTimer = null;
+          applyFilter(state, target.value);
+        }
+        moveFocus(state, key === 'ArrowDown' ? 1 : -1);
+        return;
       }
       return;
     }
@@ -945,6 +1010,23 @@
    * ===================================================================== */
 
   /**
+   * Sanitize a raw branches array into a fresh array of plain { name, path }
+   * objects, dropping any entry that is missing a string name or string path.
+   * This keeps downstream rendering/filtering (which call .toLowerCase() and
+   * render label textContent) safe against malformed seed data without throwing.
+   */
+  function normalizeBranches(rawBranches) {
+    var out = [];
+    for (var i = 0; i < rawBranches.length; i++) {
+      var b = rawBranches[i];
+      if (b && typeof b.name === 'string' && typeof b.path === 'string') {
+        out.push({ name: b.name, path: b.path });
+      }
+    }
+    return out;
+  }
+
+  /**
    * Initialise the branch selector inside `container`.
    *   container : the #branch-selector element (required).
    *   data      : { tree, branches } — defaults to window.BranchData.
@@ -956,12 +1038,39 @@
       return null;
     }
     data = data || (typeof window !== 'undefined' ? window.BranchData : null);
-    if (!data || !data.tree || !data.branches || !data.branches.length) {
-      return null; // nothing to render — leave the container untouched
+    // Require a tree object and a non-empty ARRAY of branches. Array.isArray
+    // guards against a non-array `branches` (object/string/etc.) before any
+    // array operation below (robustness / graceful invalid-data handling).
+    if (!data || !data.tree || !Array.isArray(data.branches) || !data.branches.length) {
+      return null; // nothing valid to render — leave the container untouched
     }
+
+    // Sanitize branch entries up front: drop anything without a string name and
+    // string path. Done BEFORE any teardown/DOM change so an invalid re-init
+    // never disturbs a previously-mounted valid instance.
+    var normalizedBranches = normalizeBranches(data.branches);
+    if (!normalizedBranches.length) {
+      return null; // no usable branches — safe no-op
+    }
+
     options = options || {};
 
-    // Idempotent re-init: drop any prior render but keep an existing live region.
+    // Idempotent re-init: fully tear down any PRIOR instance mounted in this
+    // container BEFORE touching its DOM. The previous instance's
+    // IntersectionObserver, scroll handler, debounce timer and delegated
+    // click/keydown listeners live in its closure and would otherwise leak
+    // across repeated init() calls; the cleanup handle is parked on the
+    // container by the prior init (see destroy() below).
+    if (typeof container.__branchSelectorDestroy === 'function') {
+      try {
+        container.__branchSelectorDestroy();
+      } catch (err) {
+        // Never let a prior teardown abort a fresh init.
+      }
+      container.__branchSelectorDestroy = null;
+    }
+
+    // Drop any prior render but keep an existing live region.
     var priorTree = container.querySelector('.branch-tree');
     if (priorTree) {
       container.removeChild(priorTree);
@@ -982,7 +1091,7 @@
     var state = {
       container: container,
       tree: data.tree,
-      branches: data.branches.slice(), // defensive shallow copy
+      branches: normalizedBranches, // sanitized, fresh {name, path} array
       pageSize: pageSize,
       debounceMs: debounceMs,
       branchTree: null,
@@ -1001,7 +1110,9 @@
       scrollHandler: null,
       sentinel: null,
       debounceTimer: null,
-      activeRow: null
+      activeRow: null,
+      onClickHandler: null,
+      onKeydownHandler: null
     };
 
     state.liveRegion = ensureLiveRegion(container);
@@ -1018,21 +1129,39 @@
     appendChromeRows(state);     // R1 — New branch + Search action rows
     renderUnfilteredBranches(state); // R1/R2 — initial paginated branch list
 
-    // Delegated interaction handlers.
-    tree.addEventListener('click', function (event) { onClick(state, event); });
-    tree.addEventListener('keydown', function (event) { onKeydown(state, event); });
+    // Delegated interaction handlers. Keep NAMED references on `state` so
+    // destroy() can detach them (anonymous listeners can never be removed).
+    state.onClickHandler = function (event) { onClick(state, event); };
+    state.onKeydownHandler = function (event) { onKeydown(state, event); };
+    tree.addEventListener('click', state.onClickHandler);
+    tree.addEventListener('keydown', state.onKeydownHandler);
+
+    // Instance cleanup: disconnect the observer / remove the scroll listener /
+    // drop the sentinel (teardownPagination), clear any pending debounce timer,
+    // and detach the delegated listeners. Parked on the container so a later
+    // init() — or an explicit consumer call — can fully tear this instance down,
+    // preventing observer/timer/listener leaks across repeated initialization.
+    function destroy() {
+      teardownPagination(state);
+      if (state.debounceTimer) {
+        clearTimeout(state.debounceTimer);
+        state.debounceTimer = null;
+      }
+      if (state.branchTree) {
+        state.branchTree.removeEventListener('click', state.onClickHandler);
+        state.branchTree.removeEventListener('keydown', state.onKeydownHandler);
+      }
+      if (container.__branchSelectorDestroy === destroy) {
+        container.__branchSelectorDestroy = null;
+      }
+    }
+    container.__branchSelectorDestroy = destroy;
 
     return {
       getSelectedPath: function () {
         return state.selectedPath;
       },
-      destroy: function () {
-        teardownPagination(state);
-        if (state.debounceTimer) {
-          clearTimeout(state.debounceTimer);
-          state.debounceTimer = null;
-        }
-      }
+      destroy: destroy
     };
   }
 

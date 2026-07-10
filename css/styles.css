@@ -425,6 +425,18 @@ main {
   flex: 0 0 auto;
 }
 
+/* Benign OPEN state. The workspace/repository selects toggle .is-open (and flip
+   aria-expanded) via js/app.js; this is the visual consumer of that state — the
+   control border adopts the accent colour so the interaction is visible. Purely
+   cosmetic: no dropdown menu is built (AAP §0.7.2 — chrome is rendered for
+   fidelity only). Token-driven; no transition, since the design contains no
+   animation. Both the class and the attribute are matched so the state is
+   robust regardless of which one a consumer sets. */
+.select-control.is-open,
+.select-control[aria-expanded="true"] {
+  border-color: var(--color-accent);
+}
+
 /* --------------------------------------------------------------------------
    Phase 7 — Usage pill (Figma 48966:64349) (agent_prompt §9)
    Two adjoined segments inside one bordered pill. Left: </> icon + text accent.
