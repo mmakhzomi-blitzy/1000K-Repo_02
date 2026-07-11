@@ -150,10 +150,19 @@ export const treeData = [
   // branch-1…16, main×6, dev (generated above, in visible order).
   ...buildBranchNodes(),
 
-  // ── engineering › frontend › web-app › sibling repositories (depth 3) ──────
+  // ── engineering › frontend › web-app › sibling repository (depth 3) ─────────
+  // admin-dash is a repo sibling of customer-portal (both parented to web-app).
   { id: 'admin-dash', type: 'repo', label: 'admin-dash', depth: 3, parentId: 'web-app', expanded: false },
-  { id: 'design-system', type: 'repo', label: 'design-system', depth: 3, parentId: 'web-app', expanded: false },
-  { id: 'shared-components', type: 'repo', label: 'shared-components', depth: 3, parentId: 'web-app', expanded: false },
+
+  // ── engineering › frontend › sibling folders (depth 2) ─────────────────────
+  // design-system and shared-components are depth-2 FOLDERS parented to
+  // `frontend` (siblings of `web-app`), matching the Figma tree — a plain
+  // closed-folder icon at the same indent as `web-app`, NOT repos under it.
+  // They are listed AFTER the entire web-app subtree so the depth-first /
+  // visible row order stays exact:
+  //   …customer-portal → branch-N → admin-dash → design-system → shared-components.
+  { id: 'design-system', type: 'folder', label: 'design-system', depth: 2, parentId: 'frontend', expanded: false },
+  { id: 'shared-components', type: 'folder', label: 'shared-components', depth: 2, parentId: 'frontend', expanded: false },
 
   // ── engineering › sibling folders (depth 1) ───────────────────────────────
   { id: 'qa', type: 'folder', label: 'qa', depth: 1, parentId: 'engineering', expanded: false },

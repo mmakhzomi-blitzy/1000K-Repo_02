@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Branch pagination + search</title>
+  <meta name="description" content="A codebase folder and repository tree with branch pagination, inline search, selection, and a confirmation footer.">
+
+  <!--
+    Stylesheet order is a hard contract: css/tokens.css declares the :root custom
+    properties (colors, typography, spacing, radius) that css/branch-list.css
+    consumes via var(--…), so tokens MUST load first. Paths are RELATIVE (no
+    leading slash) so the page works when opened directly from the filesystem
+    (file://) or served by any static file server. The Inter font is provided by
+    the stylesheet layer (an @font-face pointing at assets/fonts/ when present,
+    with a system-font fallback); there is intentionally NO external font CDN
+    link — the feature ships zero third-party dependencies.
+  -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/branch-list.css">
+</head>
+<body>
+  <!--
+    Visually-hidden document heading. Gives the page a top-level heading for
+    assistive technology and document structure without altering the Figma
+    visual: the branch-list container has no visible title of its own, and the
+    surrounding application shell (App Bar, wizard, left nav, provider select) is
+    explicitly OUT OF SCOPE (Technical Spec §0.8.2).
+  -->
+  <h1 class="sr-only">Branch pagination and search</h1>
+
+  <main class="page">
+    <!--
+      ==========================================================================
+      BranchTreeContainer — the bordered branch-list panel (Figma 48966:72006 /
+      48966:64459). A fixed 400px × ~1000px panel: 1px #D9D9D9 border, 12px
+      radius, overflow clipped. It is a flex column with two in-flow children —
+      the scrolling tree list (#tree-list) and the pinned confirmation footer
+      (#confirmation-footer). Every visual value (dimensions, border, radius,
+      spacing, colors, typography) is realized in css/branch-list.css against
+      css/tokens.css; this markup carries semantic structure + stable JS hooks
+      ONLY (no inline styles, no inline scripts).
+      ==========================================================================
+    -->
+    <div class="branch-tree" id="branch-tree">
+
+      <!--
+        Scrollable tree list — the ONLY scrolling region and the pagination
+        IntersectionObserver root. js/tree.js renders the folder / repository /
+        "New branch" / branch rows here from js/data.js: each generated row is a
+        role="treeitem" carrying an inline style="--row-depth:N" indentation hook,
+        a 24px icon slot (.branch-tree__icon) holding a 16px icon, and a label
+        (.tree-row__label / .branch-row__label / .new-branch-row__label). Nested
+        folder children are grouped with role="group" and the parent folder row
+        exposes aria-expanded="true|false". js/search.js swaps the "Search"
+        affordance below for the inline search input in place.
+      -->
+      <div class="branch-tree__list" id="tree-list" role="tree" aria-label="Codebase branches">
+
+        <!-- js/tree.js inserts the tree rows (platform, engineering, backend,
+             frontend, web-app, customer-portal, "New branch", …) ABOVE the
+             "Search" affordance; js/pagination.js appends further branch rows
+             (branch-5 … branch-16) before #pagination-sentinel. -->
+
+        <!--
+          SearchAffordanceRow (Figma 48966:67318) — the resting "Search"
+          affordance: a focusable tree node (purple magnifier + purple "Search"
+          label) that js/search.js swaps in place for #search-input-row on
+          activation. Default background is transparent; hover paints the
+          full-width lavender band (css/branch-list.css). Colors are baked into
+          the SVG / resolved from tokens — never recolored here.
+        -->
+        <div class="search-affordance" id="search-affordance" role="treeitem" tabindex="0" aria-label="Search branches">
+          <img class="branch-tree__icon" src="assets/icons/icon_search.svg" alt="" aria-hidden="true" width="24" height="24">
+          <span class="search-affordance__label">Search</span>
+        </div>
+
+        <!--
+          SearchInputRow (Figma 48966:72061 / 48966:70647) — the inline, box-less
+          search field (no fill, bottom border only, radius 0). Hidden by default;
+          js/search.js reveals it in place of the affordance and moves focus into
+          the input. The leading magnifier is purple; the native caret is used
+          (the Figma "|" is a mock cursor annotation, not literal text). The
+          trailing clear-× control is present whenever the field is open — the
+          authoritative Figma "search open / empty" frame (48966:70647) renders
+          it VISIBLE in the empty state (per AAP §0.2.2/§0.2.4/§0.2.5) — so it is
+          NOT gated on field content; js/search.js wires its click to clear the
+          query and dismiss the field. It is only display:none while the whole
+          #search-input-row is hidden (default/resting state).
+        -->
+        <div class="search-input-row" id="search-input-row" role="search" hidden>
+          <img class="branch-tree__icon" src="assets/icons/icon_search.svg" alt="" aria-hidden="true" width="24" height="24">
+          <label class="sr-only" for="branch-search-input">Search branches</label>
+          <input
+            id="branch-search-input"
+            type="search"
+            placeholder="Search"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            enterkeyhint="search"
+            aria-controls="tree-list">
+          <button class="search-clear" type="button" aria-label="Clear search">
+            <img class="branch-tree__icon" src="assets/icons/icon_x_clear.svg" alt="" aria-hidden="true" width="24" height="24">
+          </button>
+        </div>
+
+        <!--
+          EmptyState (Figma 48966:70337) — shown by js/search.js when a query
+          matches no branches: the text-only message "Branch not found" (no icon,
+          no illustration), left-aligned at the branch label column. It is
+          aria-hidden because the equivalent result is announced through the
+          #search-status live region below, which avoids a duplicate screen-reader
+          announcement.
+        -->
+        <p class="empty-state" id="empty-state" hidden aria-hidden="true">Branch not found</p>
+
+        <!--
+          Pagination sentinel — a zero-footprint 1px IntersectionObserver target
+          appended after the last branch row. js/pagination.js observes it (with
+          root = #tree-list) and appends the next branch batch on intersection.
+          The design shows NO spinner, skeleton, "loading more" row, scrollbar
+          chrome, count badge, or progress bar — pagination is a pure clip at
+          400px, so this element is intentionally invisible.
+        -->
+        <div id="pagination-sentinel" aria-hidden="true"></div>
+      </div>
+
+      <!--
+        Keyboard "Load more" fallback (accessibility only — Technical Spec §0.3.3,
+        §0.4.4). Visually hidden and revealed only on keyboard focus
+        (css/branch-list.css) so it never appears in the resting design.
+        js/pagination.js wires it so keyboard users can advance pagination without
+        a scroll gesture. It is a sibling of the scroll region (kept OUT of the
+        role="tree" so the tree owns only tree items) and does NOT introduce any
+        visible loading indicator.
+      -->
+      <button class="load-more" type="button" id="load-more">Load more branches</button>
+
+      <!--
+        ConfirmationFooter (Figma 48966:68383) — the pinned bottom bar shown by
+        js/selection.js when a branch is selected. Full-width, TOP border only,
+        bottom-corner radius (0 0 12 12), pinned to the container bottom while the
+        list scrolls above it. Left-to-right: git-branch icon, the full branch
+        path text (filled into #confirmation-path), and the purple check-circle
+        indicator (24×24). Hidden until a selection exists.
+      -->
+      <div class="branch-tree__footer" id="confirmation-footer" hidden>
+        <img class="branch-tree__icon" src="assets/icons/icon_git_branch.svg" alt="" aria-hidden="true" width="24" height="24">
+        <span class="sr-only">Selected branch: </span>
+        <span class="branch-tree__footer-path" id="confirmation-path"></span>
+        <img class="branch-tree__check" src="assets/icons/icon_check_circle.svg" alt="" aria-hidden="true" width="24" height="24">
+      </div>
+    </div>
+
+    <!--
+      Visually-hidden ARIA live region — js/search.js announces the filtered match
+      count and the "Branch not found" empty state here (polite). This is a
+      non-visual accessibility layer only; it must not alter the visual design.
+    -->
+    <div class="sr-only" id="search-status" role="status" aria-live="polite"></div>
+  </main>
+
+  <!-- Graceful degradation: the tree, pagination, and search are driven by ES
+       modules. This message is shown only when scripting is disabled. -->
+  <noscript>This interactive branch browser requires JavaScript to be enabled.</noscript>
+
+  <!--
+    Single native ES-module entry point. js/app.js imports data.js, tree.js,
+    pagination.js, search.js and selection.js and wires them together on load.
+    This is the ONLY script on the page — there is no inline JavaScript and no
+    bundler or build step.
+  -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
