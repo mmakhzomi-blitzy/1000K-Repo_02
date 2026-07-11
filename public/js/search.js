@@ -15,10 +15,11 @@
  *    folder tree stays visible.
  *  - Empty state (R5): when nothing matches, reveal the text-only "Branch not
  *    found" message (no icon, no illustration).
- *  - Dismissal (R7 / W5): Escape, the clear-"×" button, or blurring an empty
- *    field restores the affordance row, clears the query, hides the empty state,
- *    and re-renders the full branch list — leaving NO residual query, caret, or
- *    clear control.
+ *  - Dismissal (R7 / W5): Escape or the clear-"×" button restore the affordance
+ *    row, clear the query, hide the empty state, and re-render the RESTING branch
+ *    list (the current paginated slice — not the full list) — leaving NO residual
+ *    query, caret, or clear control. Blurring an EMPTY field also dismisses, but
+ *    is deferred/exempted so it never races a branch click (see {@link initSearch}).
  *  - Accessibility (I3): announce the match count / empty state through the
  *    visually-hidden `#search-status` `aria-live` region. This layer is invisible
  *    and never alters the visual design.
@@ -48,7 +49,7 @@
  */
 
 import { getBranches, ACTIVE_REPO_ID } from './data.js';
-import { renderBranchRows, clearBranchRows } from './tree.js';
+import { renderBranchRows } from './tree.js';
 
 /* ============================================================================
  * Constants — DOM hooks, timing, and verbatim content strings. The ids/classes
@@ -76,6 +77,21 @@ const FILTER_DEBOUNCE_MS = 150;
 
 /** Exact empty-state message, verbatim from the Figma design (R5). */
 const EMPTY_STATE_MESSAGE = 'Branch not found';
+
+/**
+ * Branch rows shown before any pagination scroll (AAP R2: branch-1…branch-4).
+ * Used ONLY as a fallback when the shared `state.loadedBranchCount` is absent,
+ * so the pagination-aware restore never regresses to showing the full list.
+ */
+const DEFAULT_INITIAL_LOADED = 4;
+
+/**
+ * Selector that matches a branch row, a tree item, or the tree list itself.
+ * Used to EXEMPT blur-dismissals whose focus target is a branch/tree element:
+ * such a blur is the start of a branch click, which must own the interaction
+ * (branch selection / Figma W6) rather than be raced by a search close (R3/R7).
+ */
+const TREE_TARGET_SELECTOR = '[data-branch-row], [role="treeitem"], #tree-list';
 
 /* ============================================================================
  * debounce — a tiny, dependency-free trailing-edge debounce with a `cancel()`
@@ -149,29 +165,74 @@ function getClearButton(inputRow) {
 }
 
 /* ============================================================================
- * State helper — search.js reads/writes `activeRepoId`, `query`, and
- * `searchActive` on the shared UI state owned by app.js. When omitted (e.g. an
- * isolated test), a private object seeded with the canonical active repo id is
- * used so the module never throws.
+ * State — search.js reads/writes `query` and `searchActive` and reads
+ * `activeRepoId` / `loadedBranchCount` on the SINGLE shared UI state object
+ * owned by app.js. It NEVER synthesizes a private/parallel feature state: when
+ * the caller passes no usable object, {@link initSearch} returns an inert handle
+ * instead, so there is exactly one source of truth (AAP §0.9).
  * ==========================================================================*/
 
 /**
- * @param {object} [state] Shared UI state from app.js.
- * @returns {{ activeRepoId: string, query: string, searchActive: boolean }}
+ * Validate and normalise the supplied shared UI state IN PLACE. Returns the SAME
+ * object (never a copy) with the search-owned fields (`query`, `searchActive`)
+ * guaranteed and `activeRepoId` defaulted in place when unset — or `null` when
+ * the caller passed no usable object, signalling {@link initSearch} to go inert.
+ *
+ * This mutates the app-owned object; it does NOT create a second, competing
+ * state container (the anti-pattern this replaces).
+ *
+ * @param {object} [state] Shared UI state from app.js (required in practice).
+ * @returns {({ activeRepoId: string, query: string, searchActive: boolean }|null)}
  */
-function resolveState(state) {
-  const s = state && typeof state === 'object' ? state : {};
-  if (typeof s.activeRepoId !== 'string' || s.activeRepoId.length === 0) {
-    s.activeRepoId = ACTIVE_REPO_ID;
+function normalizeState(state) {
+  if (!state || typeof state !== 'object') return null;
+  if (typeof state.activeRepoId !== 'string' || state.activeRepoId.length === 0) {
+    state.activeRepoId = ACTIVE_REPO_ID;
   }
-  if (typeof s.query !== 'string') s.query = '';
-  if (typeof s.searchActive !== 'boolean') s.searchActive = false;
-  return s;
+  if (typeof state.query !== 'string') state.query = '';
+  if (typeof state.searchActive !== 'boolean') state.searchActive = false;
+  return state;
 }
 
 /**
- * An inert handle returned when the essential DOM controls are missing, so
- * callers can wire search unconditionally without null checks.
+ * The current paginated branch count from the shared state, falling back to the
+ * AAP initial page ({@link DEFAULT_INITIAL_LOADED}) when unset. Keeps restore
+ * pagination-aware — we restore the CURRENT slice, never the full branch list.
+ * @param {object} state Shared UI state.
+ * @returns {number}
+ */
+function getLoadedCount(state) {
+  const n = state.loadedBranchCount;
+  return Number.isInteger(n) && n >= 0 ? n : DEFAULT_INITIAL_LOADED;
+}
+
+/**
+ * The RESTING branch slice: the active repository's branches truncated to the
+ * current paginated count. This is what the list shows with no query applied, so
+ * opening search, clearing the field, and dismissing all restore exactly it —
+ * preserving list contents and scroll geometry (R2/R3/R7).
+ * @param {object} state Shared UI state.
+ * @returns {import('./data.js').TreeNode[]}
+ */
+function restingBranches(state) {
+  const all = getBranches(state.activeRepoId) || [];
+  return all.slice(0, getLoadedCount(state));
+}
+
+/**
+ * True when `el` is (or is contained by) a branch row, a tree item, or the tree
+ * list — i.e. a target that owns branch selection. Used to exempt blur
+ * dismissals that are really the beginning of a branch click (R3/R7).
+ * @param {*} el
+ * @returns {boolean}
+ */
+function isTreeTarget(el) {
+  return !!(el && typeof el.closest === 'function' && el.closest(TREE_TARGET_SELECTOR));
+}
+
+/**
+ * An inert handle returned when the shared state or the essential DOM controls
+ * are missing, so callers can wire search unconditionally without null checks.
  * @returns {{ open: () => void, close: () => void, applyFilter: (v: string) => void, isActive: () => boolean, destroy: () => void }}
  */
 function inertHandle() {
@@ -186,38 +247,49 @@ function inertHandle() {
 /**
  * Initialise the branch search behavior and wire all listeners.
  *
- * @param {object} state Shared UI state (single source of truth from app.js).
- *   Reads/writes `activeRepoId` (string), `query` (string), `searchActive` (bool).
+ * @param {object} state REQUIRED shared UI state (the single source of truth
+ *   owned by app.js). Reads `activeRepoId`/`loadedBranchCount`; reads/writes
+ *   `query` and `searchActive`. When absent/invalid an inert no-op handle is
+ *   returned and NO private state is synthesized.
  * @param {object} [deps] Optional collaborators injected by app.js. Each is
  *   optional and falls back to a `./data.js` + `./tree.js` default:
  *   @param {(branches: import('./data.js').TreeNode[]) => void} [deps.renderMatches]
- *     Render the given branch nodes as plain rows. Default: `renderBranchRows`.
- *   @param {() => void} [deps.restoreList] Re-render the resting branch list on
- *     dismissal (app.js restores its paginated page). Default: render the full
- *     branch list of the active repo via `renderBranchRows`.
+ *     Render the given branch nodes as plain rows (the single rendering owner for
+ *     matches, the empty result, and the resting slice). Default: `renderBranchRows`.
+ *   @param {() => void} [deps.restoreList] Re-render the RESTING branch list on
+ *     dismissal. Default: render the active repo's current paginated slice
+ *     (`loadedBranchCount` rows) via `renderMatches` — NOT the full branch list.
  *   @param {() => void} [deps.pausePagination] Suspend pagination while searching.
  *   @param {() => void} [deps.resumePagination] Resume pagination after dismissal.
  *   @param {(text: string) => void} [deps.announce] Announce a result string.
  *     Default: set `#search-status` `textContent`.
  * @returns {{ open: () => void, close: () => void, applyFilter: (value: string) => void, isActive: () => boolean, destroy: () => void }}
  *   A cohesive handle so app.js can drive search in one call (e.g. `close()` on
- *   branch selection, per Figma W6).
+ *   branch selection, per Figma W6). An inert no-op handle is returned when the
+ *   shared state or the essential DOM controls are absent.
  */
 export function initSearch(state, deps) {
   const affordance = getAffordance();
   const inputRow = getInputRow();
   const input = getInput();
 
-  const uiState = resolveState(state);
+  // Require the SINGLE app-owned state object; never fabricate a parallel one.
+  const uiState = normalizeState(state);
+  if (!uiState) {
+    return inertHandle();
+  }
 
   // Resolve injected collaborators with defaults built on ./data.js + ./tree.js.
   const d = deps && typeof deps === 'object' ? deps : {};
   const renderMatches = typeof d.renderMatches === 'function'
     ? d.renderMatches
     : (branches) => renderBranchRows(branches, uiState);
+  // Pagination-aware default: restore exactly the current paginated slice
+  // (loadedBranchCount rows), routed through renderMatches so there is ONE
+  // rendering-ownership model. app.js may inject a richer restore (R7).
   const restoreList = typeof d.restoreList === 'function'
     ? d.restoreList
-    : () => renderBranchRows(getBranches(uiState.activeRepoId), uiState);
+    : () => renderMatches(restingBranches(uiState));
   const pausePagination = typeof d.pausePagination === 'function' ? d.pausePagination : () => {};
   const resumePagination = typeof d.resumePagination === 'function' ? d.resumePagination : () => {};
   const announce = typeof d.announce === 'function'
@@ -264,9 +336,14 @@ export function initSearch(state, deps) {
    * `input` listener debounces the CALLS into it.
    *
    * Semantics:
-   *  - empty query  → full branch list, no empty state, cleared announcement;
+   *  - empty query  → the RESTING paginated slice (NOT the full list), no empty
+   *                   state, cleared announcement;
    *  - matches      → plain rows (no highlight), empty state hidden, count announced;
    *  - no matches   → rows cleared, "Branch not found" revealed and announced.
+   *
+   * Note: matches are computed over ALL of the active repo's branches, so search
+   * can reveal branches beyond the current paginated slice; only the EMPTY-query
+   * resting view is limited to the slice (to preserve list contents/geometry).
    *
    * @param {string} rawValue The raw (un-trimmed) input value.
    */
@@ -277,11 +354,12 @@ export function initSearch(state, deps) {
     const q = raw.trim().toLowerCase();
     const all = getBranches(uiState.activeRepoId) || [];
 
-    // Empty query → the full branch list is shown; "Branch not found" only ever
-    // appears in response to an actual query (never for an empty field).
+    // Empty query → restore the RESTING paginated slice (never the full list):
+    // an empty field must preserve the current rendered slice/geometry, and
+    // "Branch not found" only ever appears in response to an actual query.
     if (q === '') {
       showEmptyState(false);
-      renderMatches(all);
+      renderMatches(restingBranches(uiState));
       announce('');
       return;
     }
@@ -291,8 +369,9 @@ export function initSearch(state, deps) {
     );
 
     if (matches.length === 0) {
-      // No matches: clear the rows and reveal the text-only empty state (R5).
-      clearBranchRows();
+      // No matches: clear the rows THROUGH the render collaborator (one
+      // rendering-ownership model) and reveal the text-only empty state (R5).
+      renderMatches([]);
       showEmptyState(true);
       announce(EMPTY_STATE_MESSAGE);
       return;
@@ -306,6 +385,22 @@ export function initSearch(state, deps) {
 
   const debouncedFilter = debounce(() => applyFilter(input.value), FILTER_DEBOUNCE_MS);
 
+  /**
+   * Pending deferred blur-dismissal timer (Finding #3 — Focus/Selection Race).
+   * Per-instance (declared in the init closure) and always cleared by
+   * `close()`/`destroy()` so a queued dismissal never fires after teardown.
+   * @type {(ReturnType<typeof setTimeout>|null)}
+   */
+  let blurCloseTimer = null;
+
+  /** Cancel any pending deferred blur-dismissal. */
+  function cancelBlurClose() {
+    if (blurCloseTimer !== null) {
+      clearTimeout(blurCloseTimer);
+      blurCloseTimer = null;
+    }
+  }
+
   /* ---- activation / dismissal (R3 / W3, R7 / W5) ----------------------- */
 
   /** Open search: transform the affordance IN PLACE into the input and focus it. */
@@ -315,6 +410,7 @@ export function initSearch(state, deps) {
       return;
     }
     uiState.searchActive = true;
+    uiState.query = '';
 
     // Toggle visibility via the `hidden` attribute only (no inline styles). The
     // input occupies the same tree position/indent as the affordance (index.html/CSS).
@@ -323,10 +419,14 @@ export function initSearch(state, deps) {
     inputRow.removeAttribute('hidden');
     input.value = '';
 
-    // Suspend pagination so the two features never fight over the branch rows,
-    // then show the full branch list beneath the open (empty) field.
+    // Suspend pagination so the two features never fight over the branch rows.
+    // Deliberately DO NOT re-render the branch region here: activating Search
+    // must PRESERVE the exact rows already on screen (the current paginated
+    // slice) and not change list contents or scroll geometry. The full match
+    // set is rendered only once an actual (nonempty) query is applied (R3 / R2).
     pausePagination();
-    applyFilter('');
+    showEmptyState(false);
+    announce('');
     input.focus();
   }
 
@@ -335,10 +435,13 @@ export function initSearch(state, deps) {
     if (!uiState.searchActive) return; // idempotent
 
     // Flip state FIRST so the synchronous blur that follows hiding the input is
-    // a no-op (onInputBlur guards on `searchActive`).
+    // a no-op (onInputBlur guards on `searchActive`), and any deferred blur-close
+    // timer that fires later also short-circuits. Drop the pending debounce and
+    // any queued blur dismissal so neither fires against the restored list.
     uiState.searchActive = false;
     uiState.query = '';
     debouncedFilter.cancel();
+    cancelBlurClose();
 
     // Reset and hide the input; restore the transparent affordance row. Clearing
     // the value leaves no residual query or caret; hiding removes the clear-× (R7).
@@ -348,8 +451,9 @@ export function initSearch(state, deps) {
     affordance.setAttribute('aria-expanded', 'false');
     showEmptyState(false);
 
-    // Restore the resting list (app.js re-renders its paged page) and resume
-    // pagination; clear the live region.
+    // Restore EXACTLY the current paginated slice, THEN re-establish a single
+    // pagination observer over that restored DOM (order matters — the observer
+    // must attach to the correct rows). Finally clear the live region (R7).
     restoreList();
     resumePagination();
     announce('');
@@ -378,20 +482,41 @@ export function initSearch(state, deps) {
   }
 
   /**
-   * Blur restores ONLY when the field is empty (never fight the user mid-query),
-   * and only when focus has left the input row (so the clear-× click handler is
-   * not raced). Focus is not stolen — the user clicked elsewhere.
+   * Blur dismisses ONLY when the field is empty (never fight the user mid-query).
+   * To avoid racing a branch click — whose event order is
+   * `mousedown → blur → mouseup → click` — a synchronous close() would re-render
+   * and DISCONNECT the target row before its click fires (Finding #3). So the
+   * dismissal is:
+   *   (a) SKIPPED when focus moves to the clear-× (its own handler owns it) or to
+   *       a branch/tree target (branch selection / Figma W6 owns the flow), and
+   *   (b) otherwise DEFERRED to a macrotask, so any in-flight pointer interaction
+   *       completes on still-connected rows before we re-render — then re-checked
+   *       at fire time in case state changed during the interaction.
+   * Escape and the clear-× remain the deterministic, immediate dismissals (R7).
+   * Focus is never stolen — the user chose to click elsewhere.
    * @param {FocusEvent} event
    */
   function onInputBlur(event) {
     if (!uiState.searchActive) return;
     if (input.value.trim() !== '') return;
-    // `relatedTarget` is the element gaining focus (an Element or null for focus
-    // events); if it lives inside the input row (e.g. the clear-× button), defer
-    // to that control's own handler instead of racing it.
+
+    // `relatedTarget` is the element gaining focus (an Element, or null).
     const next = event.relatedTarget;
+    // The clear-× button inside the input row owns its own dismissal.
     if (next && inputRow.contains(next)) return;
-    close();
+    // Exempt a branch/tree target: the click selecting a branch owns the flow.
+    if (isTreeTarget(next)) return;
+
+    // Defer so a pending branch click lands on connected rows before re-render.
+    cancelBlurClose();
+    blurCloseTimer = setTimeout(() => {
+      blurCloseTimer = null;
+      // Re-check at fire time: the interaction may have changed state.
+      if (!uiState.searchActive) return;             // already dismissed elsewhere
+      if (input.value.trim() !== '') return;         // user resumed typing
+      if (document.activeElement === input) return;  // focus returned to the input
+      close();
+    }, 0);
   }
 
   /** The clear-"×" button dismisses search and returns focus to the affordance. */
@@ -410,9 +535,10 @@ export function initSearch(state, deps) {
 
   /* ---- teardown -------------------------------------------------------- */
 
-  /** Remove every listener and drop any pending debounce (safe to call twice). */
+  /** Remove every listener and drop any pending debounce/timer (safe to call twice). */
   function destroy() {
     debouncedFilter.cancel();
+    cancelBlurClose();
     affordance.removeEventListener('click', onAffordanceClick);
     input.removeEventListener('input', onInput);
     input.removeEventListener('keydown', onInputKeydown);
