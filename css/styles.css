@@ -54,7 +54,7 @@
        .app-bar__group/__logo/__icon · .project-header__title/__actions ·
        .wizard-step/__circle/__label/__underline (+ .is-active / [aria-current="step"])
        · .section-nav__item/__check (+ .is-active / [aria-current]) ·
-       .select-control__label/__icon · .usage-pill__segment (+ --left/--right)/
+       .select-control__label/__icon · .usage-pill__body · .usage-pill__segment (+ --left/--right)/
        __code/__used/__total · .search-row__label.
 
    INDENTATION MECHANISM (tree rows / search rows / empty state):
@@ -88,11 +88,11 @@ body {
   max-width: 1440px;
   min-height: 100vh;
   margin: 0 auto;
-  padding: var(--space-24) var(--space-32) var(--space-48);
+  padding: var(--space-8);
 
   display: flex;
   flex-direction: column;
-  gap: var(--space-24);
+  gap: var(--space-8);
 
   background: var(--color-page-bg);
   color: var(--color-text-primary);
@@ -132,27 +132,79 @@ button {
   color: inherit;
 }
 
-/* Page section layout: aside (section nav) + main content column that fills. */
+/* Page section layout inside Card C: fixed 360px section-nav column + fill
+   main content column. Columns are separated by the nav's right divider (not a
+   grid gap), so gap is 0 and the nav stretches full height (align stretch). */
 .layout {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--space-32);
-  align-items: start;
+  grid-template-columns: 360px 1fr;
+  gap: 0;
+  align-items: stretch;
+}
+
+/* Left nav column carries the Card C internal divider (Figma 48966:64435
+   stroke "0px 1px 0px 0px" — right side only). */
+.layout > aside {
+  border-inline-end: 1px solid var(--color-border);
 }
 
 main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-16);
+  gap: var(--space-32);
+  padding: var(--space-32);
   min-width: 0; /* allow the fill column to shrink so children can truncate */
 }
 
 .section-heading {
-  /* "Codebase context" main heading — text-h5 (Inter 600 / 24px / 1.3). */
+  /* "Connect codebase" main heading — text-h5 (Inter 600 / 24px / 1.3). */
   font-weight: var(--font-weight-h5);
   font-size: var(--font-size-h5);
   line-height: var(--line-height-h5);
   color: var(--color-text-strong);
+}
+
+/* Section heading block (Figma 48966:64448): heading + subtitle, 12px gap. */
+.section-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+/* Repository-select subtitle (Figma 48966:64450) — text-body, secondary. */
+.section-subtitle {
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
+  color: var(--color-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Page cards (Figma screen 48966:64339): the screen is a vertical stack of
+   white rounded cards on the page background. Card A = app bar (.app-bar,
+   below). Card B = "Final" band (project header + wizard). Card C =
+   main-content (section nav + main). Each: surface fill, 1px border, radius 8.
+   -------------------------------------------------------------------------- */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-8);
+}
+
+/* Card B (Figma 48966:64371): column, 48px gap, padding 32/32/0 (flush bottom
+   so the wizard underline meets the card's lower edge). */
+.card--band {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-48);
+  padding: var(--space-32) var(--space-32) 0;
+}
+
+/* Card C (Figma 48966:64434): clips the two inner columns (and the nav divider)
+   to the card's rounded corners. */
+.card--content {
+  overflow: hidden;
 }
 
 /* --------------------------------------------------------------------------
@@ -177,6 +229,15 @@ main {
   gap: var(--space-16);
 }
 
+/* Left cluster gap 24 (Figma 48966:64343); right cluster gap 8 (48966:64348). */
+.app-bar__group--left {
+  gap: var(--space-24);
+}
+
+.app-bar__group--right {
+  gap: var(--space-8);
+}
+
 /* Blitzy logo. Glyph color is baked into the SVG asset (accent); the token
    color here supports inline/currentColor usage and documents intent. */
 .app-bar__logo {
@@ -185,11 +246,17 @@ main {
   color: var(--color-accent);
 }
 
-/* Help / settings icon controls (#666666 baked into the SVG assets). */
+/* Help / settings icon controls (#666666 baked into the SVG assets).
+   Figma 48966:64357 / 48966:64359: each control is a 64x64 hit-area frame with a
+   24x24 glyph centered — i.e. a 20px inset on each side. The horizontal padding
+   reproduces the visible inter-item spacing in the right cluster (help glyph sits
+   ~20px inside its frame); vertical padding stays 0 so the fixed 64px app-bar
+   height is unaffected. Also overrides the UA <button> default padding. */
 .app-bar__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0 var(--space-20);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -217,7 +284,8 @@ main {
 .project-header__actions {
   display: flex;
   align-items: center;
-  gap: var(--space-8);
+  /* Figma 48966:64378 actions gap == 48966:64380 icon-group gap == 12px. */
+  gap: var(--space-12);
 }
 
 /* Button base. */
@@ -234,7 +302,8 @@ main {
 
 /* Primary "Build tech spec" button — DISABLED in this design. */
 .btn--primary {
-  padding: var(--space-8) var(--space-16);
+  /* Figma 48966:64379: 8px vertical / 20px horizontal padding. */
+  padding: var(--space-8) var(--space-20);
   background: var(--color-accent);
   color: var(--color-surface);
   border-radius: var(--radius-32);
@@ -277,9 +346,11 @@ main {
    secondary numeral/label.
    -------------------------------------------------------------------------- */
 .wizard-stepper {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-32);
+  /* 6 equal columns spanning the full card width (Figma grid repeat(6,1fr)). */
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-16);
+  align-items: start;
 }
 
 .wizard-step {
@@ -287,12 +358,30 @@ main {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding-bottom: var(--space-8); /* room for the active underline */
-  /* text-nav label (Inter 600 / 16px / 1.3); default (inactive) secondary. */
-  font-weight: var(--font-weight-nav);
-  font-size: var(--font-size-nav);
-  line-height: var(--line-height-nav);
+  padding-bottom: var(--space-32); /* room for the connector row + active underline (Figma step height 60) */
+  /* Step labels: text-body (Inter 400 / 16px / 1.5 / -0.0188em); the active step
+     differs by COLOR only (Figma). Default (inactive) secondary. */
+  font-weight: var(--font-weight-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  letter-spacing: var(--letter-spacing-body);
   color: var(--color-text-secondary);
+}
+
+/* Connector line between steps (Figma 48966:64392 / …64400 / …64408 / …64416 /
+   …64424): a 1px #D9D9D9 rule filling the remainder of each step column,
+   centered on the circle row. The last step (6) has no trailing connector. */
+.wizard-step::after {
+  content: "";
+  flex: 1 1 auto;
+  min-width: var(--space-16);
+  height: 1px;
+  margin-inline-start: var(--space-8);
+  background: var(--color-border-control);
+}
+
+.wizard-step:last-child::after {
+  display: none;
 }
 
 .wizard-step__circle {
@@ -306,7 +395,8 @@ main {
   background: transparent;
   border: 1px solid var(--color-border-control);
   color: var(--color-text-secondary);
-  font-weight: var(--font-weight-nav);
+  /* Numeral: Inter Regular 400 / 16px (Figma). */
+  font-weight: var(--font-weight-body);
   font-size: var(--font-size-nav);
   line-height: var(--line-height-nav);
 }
@@ -351,7 +441,8 @@ main {
 .section-nav {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-8);
+  padding: var(--space-32);
 }
 
 .section-nav__item {
@@ -359,7 +450,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-8);
-  padding: var(--space-8) var(--space-16);
+  padding: var(--space-12);
   border-radius: var(--radius-36);
   background: transparent;
   cursor: pointer;
@@ -416,6 +507,12 @@ main {
   letter-spacing: var(--letter-spacing-body);
   color: var(--color-text-primary);
   white-space: nowrap;
+  /* The control is a <button>, which carries a UA `text-align: center`. When a
+     label is allowed to flex-grow (repository select, Figma 48966:64457 H=FILL),
+     that inherited centering would pull the text to the middle of the pill; force
+     start alignment so the label sits flush after the leading icon as in Figma.
+     Harmless for hug-width labels (workspace) where alignment has no visible box. */
+  text-align: start;
 }
 
 .select-control__icon {
@@ -437,13 +534,60 @@ main {
   border-color: var(--color-accent);
 }
 
+/* Workspace select (Figma 48966:64345): fixed 180px, label pinned left with the
+   chevron at the right edge; label is SemiBold 600 (nav). */
+.app-bar .select-control {
+  width: 180px;
+  justify-content: space-between;
+}
+
+.app-bar .select-control__label {
+  font-weight: var(--font-weight-nav);
+  /* Body/Bold tracking (Figma 48966:64346) — override the base Regular
+     -0.0188em tracking that this SemiBold label would otherwise inherit. */
+  letter-spacing: var(--letter-spacing-bold);
+}
+
+/* Repository select (Figma 48966:64451): fixed 473px hug (not full width),
+   left-aligned; padding 12/16; label is Regular 400 (text-body) in #000000. */
+main .select-control {
+  width: 473px;
+  align-self: flex-start;
+  padding: var(--space-12) var(--space-16);
+}
+
+main .select-control__label {
+  color: var(--color-text-strong);
+  /* Figma 48966:64457 sets the label's horizontal sizing to FILL, so the label
+     grows to consume the free space and pushes the trailing chevron to the pill's
+     right edge (while the leading GitLab icon stays flush-left next to the label).
+     A 3-child row (icon + label + chevron) cannot use justify-content:space-between
+     without spreading the leading icon away from the label, so the growth is placed
+     on the label instead. min-width:0 lets the flex item shrink below its content
+     width if ever needed, preventing overflow. */
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* --------------------------------------------------------------------------
    Phase 7 — Usage pill (Figma 48966:64349) (agent_prompt §9)
    Two adjoined segments inside one bordered pill. Left: </> icon + text accent.
    Right: used value strong + "/ total" secondary. A 1px divider separates the
    two segments (the visual boundary implied by the split corner radii).
    -------------------------------------------------------------------------- */
+/* Outer frame (Figma 48966:64349): transparent, no border/radius of its own;
+   carries 20px horizontal padding around the bordered body. This padding is the
+   spacing that separates the visible pill from the left cluster and from the
+   help icon to its right (Figma renders ~48-51px between the pill border and the
+   help glyph — produced by this 20px + the 8px cluster gap + help's 20px inset). */
 .usage-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-20);
+}
+
+/* Bordered body: the two adjoined segments clipped to a single pill outline. */
+.usage-pill__body {
   display: inline-flex;
   align-items: stretch;
   overflow: hidden; /* clip the segment corners to the pill outline */
@@ -455,12 +599,19 @@ main {
   display: inline-flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-12);
-  /* text-body. */
-  font-weight: var(--font-weight-body);
-  font-size: var(--font-size-body);
-  line-height: var(--line-height-body);
-  letter-spacing: var(--letter-spacing-body);
+  /* Figma 48966:64351/64354: fixed 32px segment height with 0 vertical / 12px
+     horizontal padding (text vertically centered inside the fixed box). Keeping
+     the height explicit preserves the pill's overall 32px height even though the
+     text is only 14px tall. */
+  height: var(--space-32);
+  padding: 0 var(--space-12);
+  /* text-body-sm (Figma Body/Small): Inter Regular 400 / 14px / 1.5, NO
+     letter-spacing (only Regular-body text carries the -0.0188em tracking). */
+  font-weight: var(--font-weight-body-sm);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  /* Body/Small carries NO tracking; reset the -0.0188em inherited from <body>. */
+  letter-spacing: normal;
 }
 
 .usage-pill__segment--left {
@@ -501,6 +652,47 @@ main {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Account (Figma 48966:64361): avatar + two-line name/plan stack + chevron.
+   Padded box (8/12), radius 4, transparent fill. */
+.account {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-4);
+}
+
+.account__text {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+/* "{User}" (Figma 48966:64366) — Inter SemiBold 600 / 16px / 1.5, strong. */
+.account__name {
+  font-weight: var(--font-weight-nav);
+  font-size: var(--font-size-nav);
+  line-height: var(--line-height-body);
+  /* Body/Bold tracking (Figma 48966:64366). */
+  letter-spacing: var(--letter-spacing-bold);
+  color: var(--color-text-strong);
+}
+
+/* "{Short plan}" (Figma 48966:64367) — Inter Regular 400 / 14px / 1.5, secondary. */
+.account__plan {
+  font-weight: var(--font-weight-body-sm);
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-body-sm);
+  /* Body/Small carries NO tracking; reset the -0.0188em inherited from <body>. */
+  letter-spacing: normal;
+  color: var(--color-text-secondary);
+}
+
+.account__chevron {
+  flex: 0 0 auto;
 }
 
 
@@ -862,5 +1054,27 @@ main {
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+/* --------------------------------------------------------------------------
+   Phase 14 — Accessibility live region (agent_prompt §5) — R2 / R4 / R5
+   Polite live region declared by index.html inside #branch-selector and reused
+   by js/branch-selector.js (ensureLiveRegion) to announce filter-result and
+   appended-row counts. Visually hidden with ZERO layout impact so the fixed
+   400px panel and its scroll list are never displaced by announcement text.
+   Mirrors the visually-hidden pattern branch-selector.js applies when it has to
+   create the region itself. Structural a11y-clip literals only (not theme values).
+   -------------------------------------------------------------------------- */
+.branch-selector__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 

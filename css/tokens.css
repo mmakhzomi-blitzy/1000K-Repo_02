@@ -40,8 +40,9 @@
   /* ------------------------------------------------------------------------
      Typography (Inter family + 7 text styles)
      Line-heights are unitless em multiples (1.3, 1.5) except text-button,
-     which uses a fixed 24px line-height. Only text-body carries a
-     letter-spacing (-0.0188em); no other style has letter-spacing.
+     which uses a fixed 24px line-height. Two letter-spacing values exist:
+     Body/Regular (-0.0188em, text-body) and Body/Bold (-0.0025em, used by the
+     SemiBold app-bar Workspace label and the account name).
      ------------------------------------------------------------------------ */
   --font-family-base: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
@@ -60,6 +61,10 @@
   --font-weight-body: 400;
   --line-height-body: 1.5;
   --letter-spacing-body: -0.0188em;
+  /* Body/Bold tracking — Figma "Body/Desktop/Bold" (Inter SemiBold 600 16px);
+     used by the app-bar Workspace label (48966:64346) and the account name
+     (48966:64366). Distinct from the Regular body tracking above. */
+  --letter-spacing-bold: -0.0025em;
 
   /* text-body-sm — Inter 400 / 14px / 1.5 */
   --font-size-body-sm: 14px;
@@ -99,6 +104,7 @@
   --space-8: 8px;         /* select-control gap */
   --space-12: 12px;       /* tree-body vertical padding, row horizontal padding */
   --space-16: 16px;       /* app-bar vertical padding */
+  --space-20: 20px;       /* "Build tech spec" button horizontal padding (Figma 48966:64379) */
   --space-24: 24px;
   --space-32: 32px;       /* app-bar horizontal padding */
   --space-48: 48px;
