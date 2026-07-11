@@ -1,93 +1,82 @@
-/* ============================================================================
- * tokens.css — Design Token Layer
- * ----------------------------------------------------------------------------
- * Feature:  "Branch pagination + search" static frontend.
- * Source:   Figma "Blitzy-Platform-2.0" (fileKey 91TpUu5OYVLFkPdcBCmOUu),
- *           frame 48966:14667 — Token Manifest (Technical Spec §0.2.3).
- *
- * This file is the SINGLE SOURCE OF TRUTH for every tokenized visual value.
- * It is loaded FIRST by public/index.html (before css/branch-list.css), so
- * that all custom properties are defined before any component style consumes
- * them. public/css/branch-list.css resolves EVERY color / spacing / radius /
- * typography value against the variables declared here via var(--…); the
- * token NAMES below are therefore a hard contract and must not be renamed.
- *
- * Constraints (Technical Spec §0.5, §0.9):
- *   - Plain CSS only: no preprocessor, no PostCSS, no build step, no CDN.
- *   - EXACT Figma values: no rounding, snapping, renaming, or approximation.
- *   - This file contains ONLY :root custom-property declarations (colors,
- *     typography, spacing, radius). No component selectors, no resets, and
- *     no layout rules — those live exclusively in branch-list.css.
- *   - No shadow or gradient tokens exist in the design; none are defined.
- *
- * Fonts: Inter is used as a static asset, never an npm dependency. No
- * @font-face block is declared here because no font files are present under
- * public/assets/fonts/; the UI degrades gracefully to the system-font stack
- * declared in --font-family-base (Inter first, robust system fallback after).
- * If Inter files are later added under public/assets/fonts/, @font-face rules
- * using only relative "../assets/fonts/…" URLs may be introduced.
- * ==========================================================================*/
+/* tokens.css — Design token layer for "Branch pagination + search".
+ * Loaded FIRST (before branch-list.css); every component value resolves to a
+ * var(--…) declared here. Values are the exact Figma Token Manifest (§0.2.3);
+ * token names are a contract with branch-list.css and must not be renamed.
+ * Plain CSS only: no preprocessor, no build step, no CDN. */
+
+/* Self-hosted Inter (SIL OFL-1.1; files + license under ../assets/fonts/).
+ * Relative src only — no external font CDN. font-display: swap renders the
+ * system fallback immediately, then swaps Inter in when loaded. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+}
 
 :root {
-  /* --------------------------------------------------------------------------
-   * Colors — exact hex from the Figma Token Manifest (§0.2.3).
-   * ------------------------------------------------------------------------*/
-  --color-surface: #FFFFFF;         /* container / background surface */
-  --color-border-control: #D9D9D9;  /* container border, search-input underline, footer top border */
-  --color-brand-purple: #5B39F3;    /* magnifier, "Search"/"New branch" text, plus icon, check-circle */
-  --color-text-primary: #333333;    /* tree / branch / menu row labels, footer full-path text */
-  --color-text-black: #000000;      /* typed query text, caret, clear-× tint */
-  --color-text-muted: #999999;      /* placeholder + empty-state text, git-branch/folder/repo/chevron icon tint */
-  --color-row-highlight: #F2F0FE;   /* hover + selected row background (recurring inline hex, tokenized) */
-  --color-page-bg: #F5F5F5;         /* page background behind the container */
-  --color-border-card: #E9E9E9;     /* manifest completeness (may be unused by the feature, but defined) */
+  /* Colors — exact Figma hex. */
+  --color-surface: #FFFFFF;
+  --color-border-control: #D9D9D9;
+  --color-brand-purple: #5B39F3;
+  --color-text-primary: #333333;
+  --color-text-black: #000000;
+  /* BLITZY [A11Y]: muted text (placeholder + "Branch not found") is the exact
+   * Figma value #999999; on #FFFFFF it computes ~2.85:1 and on #F2F0FE ~2.53:1,
+   * below WCAG AA 4.5:1 for normal text. Figma is authoritative, so the value
+   * is preserved exactly and flagged for designer review rather than altered. */
+  --color-text-muted: #999999;
+  --color-row-highlight: #F2F0FE;  /* recurring hover + selected row background */
+  --color-page-bg: #F5F5F5;
+  --color-border-card: #E9E9E9;    /* manifest completeness; unused by the feature */
 
-  /* --------------------------------------------------------------------------
-   * Typography — Inter family; exact weight / size / line-height / tracking
-   * (§0.2.3). Each role is exposed BOTH as a `font`-shorthand token (weight,
-   * size/line-height, then the shared family) AND as individual sub-property
-   * tokens, so component styles may consume whichever form they need. Because
-   * the CSS `font` shorthand cannot carry letter-spacing, tracking is exposed
-   * only as a sub-property token (--text-tree-row-letter-spacing).
-   *
-   * --font-family-base is the single permitted non-manifest token; it exists
-   * to make Inter usable with a graceful system-font fallback.
-   * ------------------------------------------------------------------------*/
+  /* Typography — Inter family. Each role is exposed as a `font` shorthand plus
+   * individual sub-property tokens (the shorthand cannot carry letter-spacing).
+   * --font-family-base is the only non-manifest token: it makes Inter usable
+   * with a graceful system fallback. */
   --font-family-base: Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
-  /* text-tree-row — tree / branch / menu-row body text (the dominant style). */
   --text-tree-row-weight: 400;
   --text-tree-row-size: 16px;
   --text-tree-row-line-height: 1.5em;
   --text-tree-row-letter-spacing: -0.0188em;
   --text-tree-row: 400 16px/1.5em var(--font-family-base);
 
-  /* text-search-base — search affordance + search-input base text. */
   --text-search-base-weight: 500;
   --text-search-base-size: 16px;
   --text-search-base-line-height: 1.5em;
   --text-search-base: 500 16px/1.5em var(--font-family-base);
 
-  /* text-heading-h5 — heading (used by the preview / shell if present). */
   --text-heading-h5-weight: 600;
   --text-heading-h5-size: 24px;
   --text-heading-h5-line-height: 1.3em;
   --text-heading-h5: 600 24px/1.3em var(--font-family-base);
 
-  /* --------------------------------------------------------------------------
-   * Spacing — exact px (§0.2.3).
-   * ------------------------------------------------------------------------*/
-  --space-row-v: 4px;         /* row vertical padding */
-  --space-row-h: 12px;        /* row horizontal padding */
-  --space-row-gap: 4px;       /* gap between icon and label within a row */
-  --space-indent-step: 28px;  /* depth indent per tree level (24px icon slot + 4px gap) */
-  --space-list-pad-v: 12px;   /* inner list vertical padding (12px 0) */
-  --space-panel: 32px;        /* panel-level spacing (page / preview padding) */
+  /* Spacing — exact px. */
+  --space-row-v: 4px;
+  --space-row-h: 12px;
+  --space-row-gap: 4px;
+  --space-indent-step: 28px;   /* per tree level: 24px icon slot + 4px gap */
+  --space-list-pad-v: 12px;
+  --space-panel: 32px;
 
-  /* --------------------------------------------------------------------------
-   * Radius — exact (§0.2.3).
-   * ------------------------------------------------------------------------*/
-  --radius-container: 12px;              /* container corner radius */
-  --radius-footer-bottom: 0 0 12px 12px; /* confirmation footer: bottom corners only */
-  --radius-row: 0;                       /* rows are square-cornered even when highlighted */
+  /* Radius — exact. */
+  --radius-container: 12px;
+  --radius-footer-bottom: 0 0 12px 12px;  /* footer: bottom corners only */
+  --radius-row: 0;                          /* rows stay square even when highlighted */
 }

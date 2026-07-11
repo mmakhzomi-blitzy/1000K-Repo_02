@@ -2,230 +2,170 @@
  * @file public/js/data.js
  * @module data
  *
- * Sample in-memory codebase folder/repository/branch tree dataset plus small,
- * pure lookup helpers for the "Branch pagination + search" static frontend.
+ * Sample in-memory folder/repository/branch tree plus pure lookup helpers for
+ * the "Branch pagination + search" static frontend. There is no backend/API/
+ * network layer — every node is hardcoded here so the feature is fully static.
  *
- * This is the FOUNDATION module of the feature: it is imported by `tree.js`,
- * `pagination.js`, `search.js`, `selection.js`, and `app.js`, and it imports
- * nothing itself. There is intentionally NO backend, NO API, and NO network
- * layer — every folder, repository, and branch is hardcoded here in memory so
- * the feature runs as a fully static, zero-dependency bundle.
+ * Contract: native ES module, named exports only; zero dependencies; zero side
+ * effects (no DOM, no host globals, no listeners, no network, no logging, no
+ * throw on load); all helpers are pure and never mutate `treeData` or a node.
+ * Content labels mirror the Figma design verbatim and must not be altered.
  *
- * Design contract (do not break):
- *  - Native ES module using named `export`s only (no CommonJS module system).
- *  - Zero dependencies and ZERO side effects: no DOM access, no browser host
- *    globals, no event listeners, no network calls, no logging, no throw on
- *    load. It is therefore safe to import from any context.
- *  - All exported helpers are PURE: they never mutate `treeData` or any node.
- *  - Content strings (labels) mirror the Figma design verbatim and must not be
- *    altered: e.g. "New branch", "branch-1"…"branch-16", "main", "dev".
- */
-
-/**
- * A single node in the codebase tree.
- *
- * The tree is stored as a FLAT array of nodes linked by `parentId`; this makes
- * path-building, filtering, and pagination trivial. Visual nesting is derived
- * from `depth`, and ancestry is derived by walking `parentId`.
+ * SAFE RENDERING CONTRACT (CWE-79 / CWE-20 — consumers MUST obey):
+ *  - Build rows with `document.createElement`; insert every data-derived string
+ *    (label, full path, query echo, live-status text) via `textContent` or
+ *    `document.createTextNode`. NEVER interpolate a node field into `innerHTML`,
+ *    `insertAdjacentHTML`, or an inline event/`href`/`src` attribute.
+ *  - Choose icons ONLY from the frozen {@link ICON_BY_TYPE} whitelist keyed by a
+ *    validated `node.type`; never build an icon `src` from a data string.
+ *  - Validate untrusted/derived nodes with {@link isValidNode} before rendering.
+ * These rules keep rendering injection-safe if the dataset is ever sourced
+ * dynamically. This module supplies the enforcement primitives; the render
+ * modules apply them.
  *
  * @typedef {Object} TreeNode
- * @property {string} id            Unique, stable identifier. Used as the DOM
- *                                  `data-id` and for all lookups (e.g.
- *                                  "engineering", "customer-portal", "branch-2").
- * @property {("folder"|"repo"|"branch"|"action")} type
- *                                  The node kind. Drives icon selection and
- *                                  which rows are treated as branches.
- * @property {string} label         Human-visible text rendered in the row. Exact
- *                                  string from the design (rendered verbatim).
- * @property {number} depth         Indentation level, integer 0–5. Drives the
- *                                  `depth × 28px` indentation applied in
- *                                  `tree.js`.
- * @property {(string|null)} parentId
- *                                  `id` of the parent node, or `null` for roots.
- *                                  Used to build full paths and child lists.
- * @property {boolean} [expanded]   Optional. For folders/repos: whether children
- *                                  are shown by default (the active branch chain
- *                                  is expanded to match the initial Figma view).
- * @property {boolean} [selected]   Optional. Initial selection state (cosmetic;
- *                                  runtime selection is managed by `selection.js`).
+ * @property {string} id        Unique, stable id (DOM `data-id` + lookups).
+ * @property {("folder"|"repo"|"branch"|"action")} type  Node kind (drives icon).
+ * @property {string} label     Human-visible row text (verbatim from the design).
+ * @property {number} depth     Indent level 0–5 (drives `depth × 28px` indent).
+ * @property {(string|null)} parentId  Parent id, or `null` for roots.
+ * @property {boolean} [expanded]  Folders/repos: children shown by default.
+ * @property {boolean} [selected]  Initial (cosmetic) selection flag.
  */
 
-/**
- * The `id` of the repository whose branches drive pagination and search.
- *
- * Exposed as a single source of truth so `app.js` and the sibling modules agree
- * on the active repository without duplicating the literal string.
- *
- * @type {string}
- */
+/** The repository whose branches drive pagination and search. @type {string} */
 export const ACTIVE_REPO_ID = 'customer-portal';
 
+/** Allowed node types. @type {readonly string[]} */
+const NODE_TYPES = Object.freeze(['folder', 'repo', 'branch', 'action']);
+
 /**
- * Build the branch leaves that live under the active repository.
- *
- * Generated programmatically to keep the dataset minimal while still producing
- * real, individual entries in `treeData`:
- *  - `branch-1` … `branch-16` (16 sequentially-numbered branches),
- *  - six rows labeled "main" with unique ids `main-1` … `main-6`,
- *  - a single `dev` branch, flagged `selected` to mirror the static mock.
- *
- * This is a module-private pure factory (no side effects); it is invoked once
- * while composing `treeData`.
- *
- * @returns {TreeNode[]} Ordered branch nodes parented to {@link ACTIVE_REPO_ID}.
+ * Fixed whitelist mapping a validated `node.type` to its local icon filename
+ * under `assets/icons/`. Renderers pick icons from THIS frozen map — never from
+ * a data string. Expanded folders swap the `folder` value for `folderOpen`.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const ICON_BY_TYPE = Object.freeze({
+  folder: 'icon_folder.svg',
+  folderOpen: 'icon_folder_open.svg',
+  repo: 'icon_repo.svg',
+  branch: 'icon_git_branch.svg',
+  action: 'icon_plus.svg',
+});
+
+/**
+ * Build the branch leaves under the active repository: `branch-1`…`branch-16`,
+ * six `main` rows with unique ids `main-1`…`main-6`, and one `dev` (pre-selected
+ * to mirror the mock). Module-private pure factory, invoked once below.
+ * @returns {TreeNode[]}
  */
 function buildBranchNodes() {
   /** @type {TreeNode[]} */
   const branches = [];
 
-  // branch-1 … branch-16 — numbered branches used to demonstrate pagination.
   for (let n = 1; n <= 16; n += 1) {
-    branches.push({
-      id: `branch-${n}`,
-      type: 'branch',
-      label: `branch-${n}`,
-      depth: 4,
-      parentId: ACTIVE_REPO_ID,
-    });
+    branches.push({ id: `branch-${n}`, type: 'branch', label: `branch-${n}`, depth: 4, parentId: ACTIVE_REPO_ID });
   }
-
-  // Six "main" rows. Ids are unique (main-1 … main-6) while the label is the
-  // identical, verbatim "main" — exercising duplicate-label / unique-id handling.
+  // Six "main" rows: identical verbatim label, unique ids.
   for (let n = 1; n <= 6; n += 1) {
-    branches.push({
-      id: `main-${n}`,
-      type: 'branch',
-      label: 'main',
-      depth: 4,
-      parentId: ACTIVE_REPO_ID,
-    });
+    branches.push({ id: `main-${n}`, type: 'branch', label: 'main', depth: 4, parentId: ACTIVE_REPO_ID });
   }
-
-  // The `dev` branch, pre-selected to mirror the #F2F0FE selected row in the mock.
-  branches.push({
-    id: 'dev',
-    type: 'branch',
-    label: 'dev',
-    depth: 4,
-    parentId: ACTIVE_REPO_ID,
-    selected: true,
-  });
+  branches.push({ id: 'dev', type: 'branch', label: 'dev', depth: 4, parentId: ACTIVE_REPO_ID, selected: true });
 
   return branches;
 }
 
 /**
- * The complete codebase tree as a flat, ordered array of {@link TreeNode}s.
- *
- * Order is DEPTH-FIRST and mirrors the Figma visible row order exactly:
- * platform, engineering, backend, frontend, web-app, customer-portal,
- * "New branch", branch-1…branch-16, main×6, dev, admin-dash, design-system,
- * shared-components, qa, data-science, infrastructure.
- *
- * The chain engineering → frontend → web-app → customer-portal → branch-N is
- * authoritative: it is what makes `getFullPath("branch-2")` resolve to
- * "engineering/frontend/web-app/customer-portal/branch-2". `platform` and
+ * The codebase tree as a flat, ordered array of {@link TreeNode}s (depth-first,
+ * matching the Figma visible row order). The chain engineering → frontend →
+ * web-app → customer-portal → branch-N makes `getFullPath("branch-2")` resolve
+ * to "engineering/frontend/web-app/customer-portal/branch-2"; `platform` and
  * `backend` are intentionally NOT ancestors of the branches.
- *
  * @type {TreeNode[]}
  */
 export const treeData = [
-  // ── Root-level folders (depth 0) ──────────────────────────────────────────
+  // Root folders (depth 0)
   { id: 'platform', type: 'folder', label: 'platform', depth: 0, parentId: null, expanded: false },
   { id: 'engineering', type: 'folder', label: 'engineering', depth: 0, parentId: null, expanded: true },
 
-  // ── engineering › folders (depth 1) ───────────────────────────────────────
+  // engineering › folders (depth 1)
   { id: 'backend', type: 'folder', label: 'backend', depth: 1, parentId: 'engineering', expanded: false },
   { id: 'frontend', type: 'folder', label: 'frontend', depth: 1, parentId: 'engineering', expanded: true },
 
-  // ── engineering › frontend › folder (depth 2) ─────────────────────────────
+  // engineering › frontend › folder (depth 2)
   { id: 'web-app', type: 'folder', label: 'web-app', depth: 2, parentId: 'frontend', expanded: true },
 
-  // ── engineering › frontend › web-app › repository (depth 3) — ACTIVE repo ──
+  // engineering › frontend › web-app › ACTIVE repo (depth 3)
   { id: ACTIVE_REPO_ID, type: 'repo', label: 'customer-portal', depth: 3, parentId: 'web-app', expanded: true },
 
-  // ── customer-portal › children (depth 4) ──────────────────────────────────
-  // The "New branch" action row precedes the branch leaves in the design.
+  // customer-portal › children (depth 4): "New branch" action, then branches.
   { id: 'new-branch', type: 'action', label: 'New branch', depth: 4, parentId: ACTIVE_REPO_ID },
-  // branch-1…16, main×6, dev (generated above, in visible order).
   ...buildBranchNodes(),
 
-  // ── engineering › frontend › web-app › sibling repository (depth 3) ─────────
-  // admin-dash is a repo sibling of customer-portal (both parented to web-app).
+  // web-app › sibling repository (depth 3)
   { id: 'admin-dash', type: 'repo', label: 'admin-dash', depth: 3, parentId: 'web-app', expanded: false },
 
-  // ── engineering › frontend › sibling folders (depth 2) ─────────────────────
-  // design-system and shared-components are depth-2 FOLDERS parented to
-  // `frontend` (siblings of `web-app`), matching the Figma tree — a plain
-  // closed-folder icon at the same indent as `web-app`, NOT repos under it.
-  // They are listed AFTER the entire web-app subtree so the depth-first /
-  // visible row order stays exact:
-  //   …customer-portal → branch-N → admin-dash → design-system → shared-components.
+  // frontend › sibling folders (depth 2) — listed after the web-app subtree so
+  // depth-first visible order stays exact.
   { id: 'design-system', type: 'folder', label: 'design-system', depth: 2, parentId: 'frontend', expanded: false },
   { id: 'shared-components', type: 'folder', label: 'shared-components', depth: 2, parentId: 'frontend', expanded: false },
 
-  // ── engineering › sibling folders (depth 1) ───────────────────────────────
+  // engineering › sibling folders (depth 1)
   { id: 'qa', type: 'folder', label: 'qa', depth: 1, parentId: 'engineering', expanded: false },
   { id: 'data-science', type: 'folder', label: 'data-science', depth: 1, parentId: 'engineering', expanded: false },
 
-  // ── Root-level folder (depth 0) ───────────────────────────────────────────
+  // Root folder (depth 0)
   { id: 'infrastructure', type: 'folder', label: 'infrastructure', depth: 0, parentId: null, expanded: false },
 ];
 
 /**
- * Look up a node by its unique `id`.
- *
- * @param {string} id  The node id to find.
- * @returns {(TreeNode|undefined)} The matching node, or `undefined` if none.
+ * Non-throwing structural validator for a node (safe-rendering contract).
+ * @param {*} node
+ * @returns {boolean} true if `node` has a valid id/type/label/depth/parentId.
+ */
+export function isValidNode(node) {
+  return Boolean(node)
+    && typeof node.id === 'string' && node.id.length > 0
+    && typeof node.label === 'string'
+    && NODE_TYPES.includes(node.type)
+    && Number.isInteger(node.depth) && node.depth >= 0 && node.depth <= 5
+    && (node.parentId === null || typeof node.parentId === 'string');
+}
+
+/**
+ * Look up a node by id.
+ * @param {string} id
+ * @returns {(TreeNode|undefined)}
  */
 export function getNode(id) {
   return treeData.find((node) => node.id === id);
 }
 
 /**
- * Return the ordered direct children of a node.
- *
- * Children preserve their `treeData` order (depth-first / visible order), so the
- * result is render-ready for `tree.js`. Pass `null` to get the root-level nodes.
- * The returned array is a fresh copy; the node objects it holds are shared.
- *
- * @param {(string|null)} parentId  The parent node id, or `null` for roots.
- * @returns {TreeNode[]} A new array of direct child nodes (may be empty).
+ * Ordered direct children of a node (`null` → root nodes). Fresh array; node
+ * objects are shared.
+ * @param {(string|null)} parentId
+ * @returns {TreeNode[]}
  */
 export function getChildren(parentId) {
   return treeData.filter((node) => node.parentId === parentId);
 }
 
 /**
- * Return the ordered branch leaves (`type === "branch"`) of a repository.
- *
- * Used by `pagination.js` (to page through branches) and `search.js` (to filter
- * them). Non-branch children — e.g. the "New branch" action row — are excluded.
- * For the active repository this yields branch-1…branch-16, six "main" rows, and
- * "dev" (23 nodes total).
- *
- * @param {string} repoId  The repository node id (typically {@link ACTIVE_REPO_ID}).
- * @returns {TreeNode[]} A new array of branch nodes in visible order (may be empty).
+ * Ordered branch leaves (`type === "branch"`) of a repository. For the active
+ * repo this is branch-1…branch-16, six "main", and "dev" (23 nodes).
+ * @param {string} repoId
+ * @returns {TreeNode[]}
  */
 export function getBranches(repoId) {
   return treeData.filter((node) => node.type === 'branch' && node.parentId === repoId);
 }
 
 /**
- * Build the full "/"-joined path from the root down to the given node.
- *
- * Walks the `parentId` chain upward collecting labels, then reverses to
- * top-down order. Only ancestors on the node's own chain are included, so
- * unrelated roots/folders (e.g. `platform`, `backend`) never appear.
- *
- * Example: `getFullPath("branch-2")` →
- *   "engineering/frontend/web-app/customer-portal/branch-2".
- *
- * The traversal is cycle-safe (guarded by a visited set) and returns an empty
- * string for an unknown id.
- *
- * @param {string} id  The node id whose path to build.
- * @returns {string} The "/"-joined label path, or "" if `id` is not found.
+ * Build the "/"-joined path from a root down to `id` (cycle-safe; "" if unknown).
+ * Example: getFullPath("branch-2") → "engineering/frontend/web-app/customer-portal/branch-2".
+ * @param {string} id
+ * @returns {string}
  */
 export function getFullPath(id) {
   const labels = [];
