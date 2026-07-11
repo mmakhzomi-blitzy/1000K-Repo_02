@@ -36,14 +36,16 @@
 
       <!--
         Scroll region and pagination IntersectionObserver root. Exposed as
-        role="group" (a labeled container that may hold mixed content) because it
-        also hosts the Search controls. The forthcoming js/tree.js will render the
-        folder / repository / "New branch" / branch rows inside it as a nested
-        role="tree" element (each row a role="treeitem" carrying a data-depth="N"
-        indentation hook, a 24px icon slot, and a label); folder rows expose
-        aria-expanded and group their children with role="group".
+        role="tree" (WAI-ARIA Tree) so assistive tech enters tree-navigation
+        mode. js/tree.js renders the folder / repository / "New branch" / branch
+        rows directly inside it as a FLATTENED set of role="treeitem" rows — each
+        carrying aria-level (1-based depth), a data-depth="N" indentation hook, a
+        24px icon slot, and a label; folder / repository rows additionally expose
+        aria-expanded. Keyboard follows the Tree pattern (single tab stop + roving
+        tabindex; Arrow/Home/End move focus — see js/tree.js). The tree also hosts
+        the Search controls and the pagination sentinel, which are not treeitems.
       -->
-      <div class="branch-tree__list" id="tree-list" role="group" aria-label="Codebase branches">
+      <div class="branch-tree__list" id="tree-list" role="tree" aria-label="Codebase branches">
 
         <!-- The tree rows (platform, engineering, backend, frontend, web-app,
              customer-portal, "New branch", …) will be rendered ABOVE this Search

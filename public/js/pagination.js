@@ -195,6 +195,41 @@ function isExhausted(state) {
   return getLoadedCount(state) >= getActiveBranches(state).length;
 }
 
+/**
+ * Whether the active repository's branch area is currently "live" — i.e. the
+ * repository's treeitem is rendered inside #tree-list AND expanded, so appended
+ * branch rows would attach beneath a visible, open repository.
+ *
+ * This is the CP5-CRIT-1 guard. Collapsing an ANCESTOR folder of the active
+ * repo (e.g. engineering/frontend/web-app) makes tree.js remove the active
+ * repo's branch rows and shorten #tree-list; that can pull #pagination-sentinel
+ * into the observer root and fire a spurious page load. Appending then would
+ * inject orphan branch rows into a collapsed subtree, over-advance
+ * `state.loadedBranchCount`, and desynchronise selection/footer state. Collapsing
+ * the active repo in place (aria-expanded="false") likewise hides its branches.
+ * Gating {@link loadNextBranchPage} on this predicate makes the module fully
+ * self-guarding: it never paginates unless the active repo is actually on screen
+ * and open — with NO reliance on app.js folder-toggle wiring.
+ *
+ * The lookup iterates treeitems and compares `dataset.id` (injection-proof; no
+ * selector escaping needed) and tolerates a missing #tree-list (test harnesses).
+ *
+ * @param {object} state Shared UI state.
+ * @returns {boolean} True only when the active repo row is present and expanded.
+ */
+function isActiveRepoBranchAreaLive(state) {
+  const repoId = (state && state.activeRepoId) || ACTIVE_REPO_ID;
+  const treeList = getTreeList();
+  if (!treeList) return false;
+  const rows = treeList.querySelectorAll('[role="treeitem"][data-id]');
+  for (const row of rows) {
+    if (row.dataset.id === repoId) {
+      return row.getAttribute('aria-expanded') === 'true';
+    }
+  }
+  return false;
+}
+
 /* ============================================================================
  * Core — append the next page of branch rows.
  * ==========================================================================*/
@@ -207,7 +242,12 @@ function isExhausted(state) {
  *   2. a search query is active → no-op (search owns the branch region while
  *      filtering — AAP Phase 4);
  *   3. a load is already in flight → no-op (the `loading` flag prevents
- *      duplicate appends from rapid, overlapping intersections — AAP §0.3.3).
+ *      duplicate appends from rapid, overlapping intersections — AAP §0.3.3);
+ *   4. the active repository's branch area is not live (its row is absent or
+ *      collapsed) → no-op. This is the CP5-CRIT-1 self-guard: it prevents the
+ *      spurious page load a collapsing ancestor can trigger via the sentinel,
+ *      which would otherwise inject orphan rows and corrupt loaded-count and
+ *      selection state (see {@link isActiveRepoBranchAreaLive}).
  * When there is nothing left to append, the observer is disconnected and the
  * keyboard fallback hidden (data exhausted).
  *
@@ -229,6 +269,13 @@ export function loadNextBranchPage(state) {
 
   // Re-entrancy guard against rapid, overlapping intersection callbacks.
   if (loading) return false;
+
+  // CP5-CRIT-1 self-guard: never append unless the active repo is actually
+  // rendered and expanded. A collapsing ANCESTOR of the active repo shortens
+  // #tree-list and can bring the sentinel into view, firing this method; without
+  // this check we would inject orphan rows into a collapsed subtree and corrupt
+  // loadedBranchCount + selection state. No app.js toggle wiring is relied upon.
+  if (!isActiveRepoBranchAreaLive(s)) return false;
 
   const all = getActiveBranches(s);
   const loaded = getLoadedCount(s);

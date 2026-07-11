@@ -13,8 +13,8 @@
  *
  * SELECTOR / HOOK CONTRACT (matches public/index.html and future public/js):
  *   .branch-tree / #branch-tree ............ bordered 400px container
- *   .branch-tree__list / #tree-list ........ the ONLY scroll region (role="group";
- *       JS renders a role="tree" element inside for folder/branch items)
+ *   .branch-tree__list / #tree-list ........ the ONLY scroll region (role="tree";
+ *       holds a flattened set of role="treeitem" rows with aria-level)
  *   .tree-row .............................. folder / repository rows (have chevron)
  *   .new-branch-row ........................ "New branch" action row
  *   .branch-row ............................ branch leaf rows

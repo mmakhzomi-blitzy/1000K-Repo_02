@@ -86,10 +86,17 @@ const CLASS_FOLDER = 'tree-row--folder';
 const CLASS_REPO = 'tree-row--repo';
 const CLASS_ACTION = 'new-branch-row';
 const CLASS_BRANCH = 'branch-row';
-/** Structural sub-element classes. */
-const CLASS_INDENT = 'tree-row__indent';
-const CLASS_CHEVRON = 'tree-row__chevron';
-const CLASS_ICON = 'tree-row__icon';
+/**
+ * Structural sub-element classes. The chevron and type icon reuse the SHARED
+ * `.branch-tree__*` slot styles from branch-list.css (24px slot / 16px glyph /
+ * 4px pad) so JS-rendered rows align pixel-for-pixel with the static rows
+ * declared in index.html (which already use `.branch-tree__icon`). Depth
+ * indentation is provided entirely by the `data-depth` → `--row-depth`
+ * padding-left formulas in branch-list.css, so NO per-level spacer elements are
+ * emitted (they would only add spurious flex gaps and shift content right).
+ */
+const CLASS_CHEVRON = 'branch-tree__chevron';
+const CLASS_ICON = 'branch-tree__icon';
 const CLASS_LABEL = 'tree-row__label';
 /** State hook classes (branch-list.css styles both these and the aria-* form). */
 const CLASS_EXPANDED = 'is-expanded';
@@ -121,6 +128,14 @@ let lastRenderedBranches = [];
  * control that WE hid, never fighting search.js during normal operation.
  */
 let searchHiddenByCollapse = false;
+/**
+ * Node id of the treeitem that currently holds the single tab stop (roving
+ * tabindex, Concern-C). Tracked by id (not element reference) so the tab stop
+ * survives the scaffold re-render that {@link renderTree}/{@link toggleFolder}
+ * perform. Null when the tree has no treeitems.
+ * @type {?string}
+ */
+let rovingId = null;
 
 /* ============================================================================
  * DOM lookup helpers — all defensive; index.html is the structural authority
@@ -355,8 +370,11 @@ function iconFileFor(node, state) {
 }
 
 /**
- * Create a decorative 16×16 `<img>` icon. `alt=""` + `aria-hidden="true"` keep
- * it out of the accessibility tree; the row label carries the accessible name.
+ * Create a decorative icon `<img>` sized to the shared 24px slot (a 16px glyph
+ * is produced by the `.branch-tree__*` 4px padding in branch-list.css). The
+ * width/height="24" attributes match the static rows in index.html so JS and
+ * static rows are pixel-identical. `alt=""` + `aria-hidden="true"` keep it out of
+ * the accessibility tree; the row label carries the accessible name.
  * `width`/`height`/`src`/`alt` are presentational/semantic attributes — not
  * inline styles.
  *
@@ -370,19 +388,21 @@ function createIcon(className, fileName) {
   img.setAttribute('src', ICON_BASE + fileName);
   img.setAttribute('alt', '');
   img.setAttribute('aria-hidden', 'true');
-  img.setAttribute('width', '16');
-  img.setAttribute('height', '16');
+  img.setAttribute('width', '24');
+  img.setAttribute('height', '24');
   return img;
 }
 
 /**
  * Build a fully-formed, accessible row element for a tree node.
  *
- * Child order matches the design: `node.depth` indent spacers → (folders only)
- * a disclosure chevron → the type icon → the text label. Folders/expandable
- * repos expose `aria-expanded`; branch rows carry `data-branch-id`/`data-path`
- * and reflect the current selection. The row is keyboard-focusable so folder
- * toggling and branch selection work from the keyboard.
+ * Child order matches the design: (folders only) a disclosure chevron → the
+ * type icon → the text label. Depth indentation is applied entirely via the
+ * `data-depth` → `--row-depth` padding-left formula in branch-list.css, so NO
+ * per-level spacer elements are emitted. Folders/expandable repos expose
+ * `aria-expanded`; branch rows carry `data-branch-id`/`data-path` and reflect
+ * the current selection. The row is keyboard-focusable so folder toggling and
+ * branch selection work from the keyboard.
  *
  * @param {import('./data.js').TreeNode} node
  * @param {object} state Shared UI state.
@@ -397,7 +417,11 @@ function createRow(node, state) {
   row.dataset.depth = String(node.depth);
   // Flat-tree ARIA level is 1-based.
   row.setAttribute('aria-level', String(node.depth + 1));
-  row.tabIndex = 0;
+  // WAI-ARIA Tree pattern (Concern-C): rows default to tabindex=-1; the roving
+  // mechanism (ensureRovingTabindex / onTreeFocusIn) promotes exactly ONE
+  // treeitem to tabindex=0 so the whole tree is a single tab stop and Arrow
+  // keys move focus between rows.
+  row.tabIndex = -1;
 
   // Expandable rows advertise and reflect their open/closed state.
   if (isExpandable(node)) {
@@ -414,14 +438,6 @@ function createRow(node, state) {
     const selected = !!(state && state.selectedBranchId === node.id);
     row.setAttribute('aria-selected', selected ? 'true' : 'false');
     if (selected) row.classList.add(CLASS_SELECTED);
-  }
-
-  // Depth indentation: one CSS-sized spacer per level (no pixel math here).
-  for (let i = 0; i < node.depth; i += 1) {
-    const spacer = document.createElement('span');
-    spacer.className = CLASS_INDENT;
-    spacer.setAttribute('aria-hidden', 'true');
-    row.appendChild(spacer);
   }
 
   // Disclosure chevron — folders only (rotated 90° when expanded, via CSS).
@@ -587,6 +603,7 @@ export function renderBranchRows(branches, state) {
     insertBranchRow(node, resolved, treeList, anchor);
   }
   ensureSentinelLast(treeList);
+  ensureRovingTabindex();
 }
 
 /**
@@ -612,6 +629,7 @@ export function appendBranchRows(branches, state) {
     }
   }
   ensureSentinelLast(treeList);
+  ensureRovingTabindex();
 }
 
 /**
@@ -623,6 +641,7 @@ export function clearBranchRows() {
   lastRenderedBranches = [];
   removeBranchRowsFromDom();
   ensureSentinelLast();
+  ensureRovingTabindex();
 }
 
 /* ============================================================================
@@ -757,6 +776,7 @@ export function renderTree(state, handlers) {
 
   syncBranchArea(resolved);
   ensureSentinelLast(treeList);
+  ensureRovingTabindex();
 }
 
 /* ============================================================================
@@ -814,6 +834,177 @@ function isExpandableRow(row) {
   return !!row && row.hasAttribute('aria-expanded');
 }
 
+/* ============================================================================
+ * Roving tabindex + WAI-ARIA Tree keyboard navigation (Concern-C).
+ * The tree is a SINGLE tab stop: exactly one treeitem carries tabindex=0, all
+ * others -1. Arrow/Home/End move focus (DOM order == visual order); Right/Left
+ * expand/collapse or dive-to-child / climb-to-parent via aria-level. These are
+ * non-visual accessibility enhancements layered over the Figma design; they add
+ * no markup and never change appearance.
+ * ==========================================================================*/
+
+/**
+ * All treeitem rows currently in the DOM, in document (visual) order.
+ * @param {HTMLElement} [treeList]
+ * @returns {HTMLElement[]}
+ */
+function getTreeItems(treeList) {
+  const list = treeList || getTreeList();
+  if (!list) return [];
+  return Array.from(list.querySelectorAll('[role="treeitem"]'));
+}
+
+/** 1-based aria-level of a row (defaults to 1). */
+function rowLevel(row) {
+  return parseInt((row && row.getAttribute('aria-level')) || '1', 10);
+}
+
+/** Focus a row if focusable (focus triggers onTreeFocusIn → roving update). */
+function focusRow(row) {
+  if (row && typeof row.focus === 'function') row.focus();
+}
+
+/**
+ * Make `target` the single tabbable treeitem (tabindex=0), all others -1, and
+ * remember it as {@link rovingId}.
+ * @param {HTMLElement[]} items
+ * @param {?HTMLElement} target
+ */
+function applyRoving(items, target) {
+  for (const el of items) {
+    el.tabIndex = el === target ? 0 : -1;
+  }
+  rovingId = target ? target.dataset.id || null : null;
+}
+
+/**
+ * Guarantee exactly one tabbable treeitem after any (re-)render. Preference:
+ * the row that currently holds focus → the previously-roving node id (if still
+ * present) → the first treeitem. Never moves focus (only sets tabindex), so it
+ * is safe to call from every render path.
+ */
+function ensureRovingTabindex() {
+  const treeList = getTreeList();
+  if (!treeList) return;
+  const items = getTreeItems(treeList);
+  if (items.length === 0) {
+    rovingId = null;
+    return;
+  }
+  const active = document.activeElement;
+  let target =
+    active &&
+    active.getAttribute &&
+    active.getAttribute('role') === 'treeitem' &&
+    treeList.contains(active)
+      ? active
+      : null;
+  if (!target) target = items.find((el) => el.dataset.id === rovingId) || null;
+  if (!target) target = items[0];
+  applyRoving(items, target);
+}
+
+/**
+ * Focus-follows-roving: when any treeitem gains focus (Tab, click, or
+ * programmatic), it becomes the single tab stop.
+ * @param {FocusEvent} event
+ */
+function onTreeFocusIn(event) {
+  const treeList = getTreeList();
+  if (!treeList) return;
+  const row =
+    event.target && event.target.closest
+      ? event.target.closest('[role="treeitem"]')
+      : null;
+  if (!row || !treeList.contains(row)) return;
+  applyRoving(getTreeItems(treeList), row);
+}
+
+/**
+ * Keys handled by the tree navigation model. Enter/Space are handled separately
+ * (activation) and are intentionally NOT in this set.
+ */
+const TREE_NAV_KEYS = new Set([
+  'ArrowDown',
+  'ArrowUp',
+  'Home',
+  'End',
+  'ArrowRight',
+  'ArrowLeft',
+]);
+
+/**
+ * Handle a WAI-ARIA tree navigation key for `row`. Returns true if the key was
+ * consumed. Up/Down/Home/End move focus in DOM order; Right expands a collapsed
+ * row then (once expanded) dives to the first child; Left collapses an expanded
+ * row else climbs to the nearest shallower-level ancestor.
+ * @param {KeyboardEvent} event
+ * @param {HTMLElement} treeList
+ * @param {HTMLElement} row
+ * @returns {boolean}
+ */
+function handleTreeNavKey(event, treeList, row) {
+  const items = getTreeItems(treeList);
+  const idx = items.indexOf(row);
+  if (idx === -1) return false;
+  const key = event.key;
+
+  if (key === 'ArrowDown') {
+    event.preventDefault();
+    if (idx < items.length - 1) focusRow(items[idx + 1]);
+    return true;
+  }
+  if (key === 'ArrowUp') {
+    event.preventDefault();
+    if (idx > 0) focusRow(items[idx - 1]);
+    return true;
+  }
+  if (key === 'Home') {
+    event.preventDefault();
+    focusRow(items[0]);
+    return true;
+  }
+  if (key === 'End') {
+    event.preventDefault();
+    focusRow(items[items.length - 1]);
+    return true;
+  }
+  if (key === 'ArrowRight') {
+    event.preventDefault();
+    if (isExpandableRow(row)) {
+      if (row.getAttribute('aria-expanded') === 'false') {
+        // Collapsed → expand in place (toggleFolder re-renders + refocuses row).
+        toggleFolder(row.dataset.id, activeState, activeHandlers);
+      } else if (
+        idx < items.length - 1 &&
+        rowLevel(items[idx + 1]) > rowLevel(row)
+      ) {
+        // Already expanded → dive to first child.
+        focusRow(items[idx + 1]);
+      }
+    }
+    return true;
+  }
+  if (key === 'ArrowLeft') {
+    event.preventDefault();
+    if (isExpandableRow(row) && row.getAttribute('aria-expanded') === 'true') {
+      // Expanded → collapse in place (toggleFolder re-renders + refocuses row).
+      toggleFolder(row.dataset.id, activeState, activeHandlers);
+    } else {
+      // Leaf or collapsed → climb to the nearest shallower-level ancestor.
+      const lvl = rowLevel(row);
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        if (rowLevel(items[i]) === lvl - 1) {
+          focusRow(items[i]);
+          break;
+        }
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 /**
  * Delegated click handler on the tree root. Toggles the nearest expandable
  * row; ignores branch/action rows so selection.js can own branch activation.
@@ -832,25 +1023,36 @@ function onTreeClick(event) {
 }
 
 /**
- * Delegated keydown handler on the tree root. Enter/Space toggles the nearest
- * expandable row (Space's default page-scroll is prevented). Branch-row keys
- * are left for selection.js.
+ * Delegated keydown handler on the tree root. First dispatches WAI-ARIA tree
+ * navigation keys (Arrow/Home/End — Concern-C), then activation: Enter/Space
+ * toggles the nearest expandable row (Space's default page-scroll is
+ * prevented). Branch-row Enter/Space is left for selection.js.
  *
  * @param {KeyboardEvent} event
  */
 function onTreeKeydown(event) {
-  if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') {
-    return;
-  }
   const treeList = getTreeList();
   if (!treeList) return;
   const row =
     event.target && event.target.closest
       ? event.target.closest('[role="treeitem"]')
       : null;
-  if (!row || !treeList.contains(row) || !isExpandableRow(row)) return;
-  event.preventDefault();
-  toggleFolder(row.dataset.id, activeState, activeHandlers);
+  if (!row || !treeList.contains(row)) return;
+
+  // Navigation (Concern-C): Arrow/Home/End move focus or expand/collapse and
+  // consume the event so the 400px container / page never scrolls.
+  if (TREE_NAV_KEYS.has(event.key)) {
+    handleTreeNavKey(event, treeList, row);
+    return;
+  }
+
+  // Activation: Enter/Space toggles expandable folder/repo rows only. Branch
+  // rows are ignored here so selection.js owns their Enter/Space activation.
+  if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+    if (!isExpandableRow(row)) return;
+    event.preventDefault();
+    toggleFolder(row.dataset.id, activeState, activeHandlers);
+  }
 }
 
 /**
@@ -864,4 +1066,7 @@ function ensureDelegation(treeList) {
   treeList.dataset.treeDelegationAttached = 'true';
   treeList.addEventListener('click', onTreeClick);
   treeList.addEventListener('keydown', onTreeKeydown);
+  // Roving tabindex follows focus (Concern-C): the focused treeitem becomes the
+  // single tab stop.
+  treeList.addEventListener('focusin', onTreeFocusIn);
 }
