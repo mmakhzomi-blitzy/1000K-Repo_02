@@ -146,9 +146,12 @@
 
   <!--
     Behavior is delivered by native ES modules (js/data.js, js/tree.js,
-    js/pagination.js, js/search.js, js/selection.js wired by js/app.js). Those
-    modules are implemented in a later milestone; no script is referenced here yet
-    so this page loads the static structure and styling with no broken resources.
+    js/pagination.js, js/search.js, js/selection.js) wired together by the
+    js/app.js entry point. app.js is the ONLY script referenced here: as an ES
+    module it imports its siblings itself, is deferred by default (so it runs
+    after this markup is parsed), and adds zero third-party dependencies. The
+    src is RELATIVE so it resolves under any static file server.
   -->
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
