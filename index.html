@@ -72,17 +72,19 @@
         <img src="assets/icons/cog.svg" alt="" aria-hidden="true" width="24" height="24">
       </button>
 
-      <!-- Account (48966:64361): avatar + name/plan text stack + trailing chevron. -->
-      <div class="account">
+      <!-- Account (48966:64361): avatar + name/plan text stack + trailing chevron.
+           C2 — a focusable <button> with an accessible name (was a non-focusable
+           <div>). The avatar is decorative here since aria-label names the control. -->
+      <button class="account" type="button" aria-label="Account">
         <span class="avatar">
-          <img src="assets/images/profile-picture.png" alt="Account" width="32" height="32">
+          <img src="assets/images/profile-picture.png" alt="" aria-hidden="true" width="32" height="32">
         </span>
         <span class="account__text">
           <span class="account__name">{User}</span>
           <span class="account__plan">{Short plan}</span>
         </span>
         <img class="account__chevron" src="assets/icons/header-chevron.svg" alt="" aria-hidden="true" width="10" height="6">
-      </div>
+      </button>
     </div>
   </header>
 
@@ -170,16 +172,16 @@
     <!-- Section navigation (Figma 48966:64436): active item has the trailing check. -->
     <aside>
       <nav class="section-nav" aria-label="Codebase context sections">
-        <a class="section-nav__item" aria-current="true">
+        <a class="section-nav__item" href="#connect-codebase" aria-current="page">
           <span>Connect codebase</span>
           <span class="section-nav__check">
             <img src="assets/icons/nav-check.svg" alt="" aria-hidden="true" width="15" height="12">
           </span>
         </a>
-        <a class="section-nav__item">
+        <a class="section-nav__item" href="#environment-setup">
           <span>Environment setup</span>
         </a>
-        <a class="section-nav__item">
+        <a class="section-nav__item" href="#codebase-details">
           <span>Codebase details</span>
         </a>
       </nav>
@@ -187,7 +189,7 @@
 
     <main>
       <!-- Section heading block (Figma 48966:64448): heading + subtitle, 12px gap. -->
-      <div class="section-head">
+      <div class="section-head" id="connect-codebase">
         <h2 class="section-heading">Connect codebase</h2>
         <p class="section-subtitle">Select a repository for indexing. Blitzy will use it to generate an accurate tech spec.</p>
       </div>
@@ -212,6 +214,17 @@
       <section id="branch-selector" class="branch-selector">
         <div class="branch-selector__live" role="status" aria-live="polite" aria-atomic="true"></div>
       </section>
+
+      <!-- In-column divider (Figma 48966:64688) — C4: 1px #D9D9D9 rule spanning the
+           content column. The 32px clearance above/below comes from main's 32px gap. -->
+      <hr class="content-divider">
+
+      <!-- Section heading block (Figma 48966:64689) — C3: "Environment setup" heading
+           + subtitle, 12px gap; same shared template as "Connect codebase". -->
+      <div class="section-head" id="environment-setup">
+        <h2 class="section-heading">Environment setup</h2>
+        <p class="section-subtitle">Choose from your saved environments so Blitzy can build and run your project. You can also create a new one if needed.</p>
+      </div>
     </main>
   </div>
   </div><!-- /.card--content -->

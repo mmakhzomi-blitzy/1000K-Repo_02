@@ -46,36 +46,61 @@
     return { name: name, path: REPO_PATH + '/' + name };
   });
 
-  // Folder -> repository hierarchy that leads down to the customer-portal repo:
-  //   engineering (folder)
-  //   └─ frontend (folder)
-  //      └─ web-app (folder)
-  //         └─ customer-portal (repo)
+  // Folder / repository hierarchy shown in the branch selector. Confirmed from
+  // Figma (screen 48966:64339): the tree is a FOREST of top-level folders whose
+  // initial (unscrolled) viewport renders these rows, top -> bottom:
+  //   platform            (folder, L0, COLLAPSED — reveals nothing)
+  //   engineering         (folder, L0, EXPANDED)
+  //   ├─ backend          (folder, L1, COLLAPSED — reveals nothing)
+  //   └─ frontend         (folder, L1, EXPANDED)
+  //      └─ web-app        (folder, L2, EXPANDED)
+  //         └─ customer-portal   (repo, L3, EXPANDED)
+  // `platform` (a top-level sibling of `engineering`) and `backend` (the FIRST
+  // child of `engineering`, before `frontend`) are rendered COLLAPSED: closed-
+  // folder icon + a non-rotated chevron, with no children revealed. Every other
+  // node is EXPANDED so the branch list under customer-portal is visible by
+  // default. Each node carries an explicit `expanded` flag consumed by
+  // js/branch-selector.js (renderChain) to choose the folder vs folder-open icon
+  // and the initial aria-expanded state.
+  //
   // The repository's branches are NOT nested inside `tree`; they live in the
-  // flat `branches` array above and are attached under the repo at render time
-  // by js/branch-selector.js. The repo node keeps an empty `children: []` so
-  // its shape stays consistent with the folder nodes for the consumer.
-  var tree = {
-    type: 'folder',
-    name: 'engineering',
-    path: 'engineering',
-    children: [{
-      type: 'folder',
-      name: 'frontend',
-      path: 'engineering/frontend',
-      children: [{
-        type: 'folder',
-        name: 'web-app',
-        path: 'engineering/frontend/web-app',
-        children: [{
-          type: 'repo',
-          name: 'customer-portal',
-          path: REPO_PATH,
-          children: []
-        }]
-      }]
-    }]
-  };
+  // flat `branches` array above and are attached under the customer-portal repo
+  // at render time by js/branch-selector.js. Folder/repo `path` values are
+  // stable identifiers used only for collapse/expand tracking (they need not map
+  // to any branch path). `tree` is an ARRAY of root nodes (a forest) because
+  // `platform` and `engineering` are siblings at depth 0.
+  var tree = [
+    {
+      type: 'folder', name: 'platform', path: 'platform',
+      expanded: false, children: []
+    },
+    {
+      type: 'folder', name: 'engineering', path: 'engineering',
+      expanded: true,
+      children: [
+        {
+          type: 'folder', name: 'backend', path: 'engineering/backend',
+          expanded: false, children: []
+        },
+        {
+          type: 'folder', name: 'frontend', path: 'engineering/frontend',
+          expanded: true,
+          children: [
+            {
+              type: 'folder', name: 'web-app', path: 'engineering/frontend/web-app',
+              expanded: true,
+              children: [
+                {
+                  type: 'repo', name: 'customer-portal', path: REPO_PATH,
+                  expanded: true, children: []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ];
 
   // Expose the single global namespace consumed by the later classic scripts.
   // Only this property is added to the global scope (everything else above is

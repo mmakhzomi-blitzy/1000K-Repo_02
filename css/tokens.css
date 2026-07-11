@@ -61,10 +61,6 @@
   --font-weight-body: 400;
   --line-height-body: 1.5;
   --letter-spacing-body: -0.0188em;
-  /* Body/Bold tracking — Figma "Body/Desktop/Bold" (Inter SemiBold 600 16px);
-     used by the app-bar Workspace label (48966:64346) and the account name
-     (48966:64366). Distinct from the Regular body tracking above. */
-  --letter-spacing-bold: -0.0025em;
 
   /* text-body-sm — Inter 400 / 14px / 1.5 */
   --font-size-body-sm: 14px;
@@ -104,7 +100,6 @@
   --space-8: 8px;         /* select-control gap */
   --space-12: 12px;       /* tree-body vertical padding, row horizontal padding */
   --space-16: 16px;       /* app-bar vertical padding */
-  --space-20: 20px;       /* "Build tech spec" button horizontal padding (Figma 48966:64379) */
   --space-24: 24px;
   --space-32: 32px;       /* app-bar horizontal padding */
   --space-48: 48px;

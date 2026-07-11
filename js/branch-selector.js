@@ -40,12 +40,16 @@
  *   3. The polite live region is created here (visually-hidden inline styles),
  *      because css/styles.css defines no `.sr-only`/visually-hidden utility.
  *      An existing `[aria-live]` region (if index.html provides one) is reused.
- *   4. Only the data.js hierarchy is rendered (linear chain
- *      engineering>frontend>web-app>customer-portal + 18 flat branches). The
- *      richer folder set seen in some Figma frames is NOT invented — js/data.js
- *      is the authoritative data source (AAP Constraint 6, §0.6.2).
- *   5. git-branch.svg is #999999 in BOTH tree rows and the confirmation bar
- *      (single shared asset; colour is baked into the SVG).
+ *   4. Only the data.js hierarchy is rendered — the folder/repo FOREST it
+ *      declares (platform [collapsed] + engineering > { backend [collapsed],
+ *      frontend > web-app > customer-portal }) plus the 18 flat branches
+ *      attached under the repo. js/data.js is the authoritative data source
+ *      (AAP Constraint 6, §0.6.2); no folder set is invented beyond it.
+ *   5. git-branch.svg is a single shared asset baked at #999999. Tree-row
+ *      instances render #999999 as-is; the confirmation-bar instance is
+ *      recoloured to #333333 via a CSS mask in styles.css to match Figma
+ *      48966:68385 (AAP §0.3.4 keeps ONE reused asset — only the colour of
+ *      that one instance differs).
  *   6. Pagination uses a native IntersectionObserver sentinel (with a scroll
  *      listener fallback). No numbered pager, "Load more", next/previous
  *      control, visible scrollbar, or spinner is rendered (AAP §0.7.2).
@@ -63,8 +67,10 @@
    * ===================================================================== */
 
   // Relative directory holding the pre-downloaded Figma SVG icons. Icons are
-  // rendered as <img>; their colours are baked into the SVG files (not
-  // recoloured by CSS), so the correct file MUST be placed in the correct slot.
+  // rendered as <img> and their colours are baked into the SVG files, so the
+  // correct file MUST be placed in the correct slot. (One exception: the
+  // confirmation-bar git-branch instance is recoloured to #333333 via a CSS
+  // mask in styles.css — see header decision note 5 above.)
   var ICON_BASE = 'assets/icons/';
   var ICON = {
     folder: 'folder.svg',          // collapsed folder      (Figma 36337:14981)
@@ -318,40 +324,75 @@
    * ===================================================================== */
 
   /**
-   * Render the folder/repo chain from state.tree (engineering > frontend >
-   * web-app > customer-portal). Records the repo depth so action rows and
-   * branches can be placed one level deeper (repoDepth + 1).
+   * Render the folder/repo FOREST from state.tree as a pre-order depth-first
+   * traversal, so each node's row is emitted immediately before its descendants
+   * — the flat, document-ordered row list that recomputeVisibility() relies on
+   * for depth-based collapse handling.
+   *
+   * state.tree is normally an ARRAY of root nodes (a forest); a single root
+   * object is also accepted and wrapped, so this stays robust to either shape.
+   *
+   * Confirmed Figma forest (screen 48966:64339), rendered top -> bottom:
+   *   platform (L0, collapsed) · engineering (L0, expanded)
+   *     ├─ backend (L1, collapsed) · frontend (L1, expanded)
+   *     └─ web-app (L2, expanded) └─ customer-portal (repo, L3, expanded)
+   *
+   * The customer-portal repo is the deepest/last node, so its depth is recorded
+   * as state.repoDepth and the action + branch rows attach one level deeper
+   * (repoDepth + 1) via appendChromeRows() / renderUnfilteredBranches().
    */
   function renderChain(state) {
-    var node = state.tree;
-    var depth = 0;
-    while (node) {
-      var isRepo = node.type === 'repo';
-      var row = createTreeRow(state, {
-        type: isRepo ? 'repo' : 'folder',
-        label: node.name,
-        path: node.path,
-        depth: depth,
-        icon: isRepo ? ICON.repo : ICON.folderOpen,
-        expanded: true // folders/repo default to expanded (Phase 2 Decision 4)
-      });
-      state.branchTree.appendChild(row);
-
-      if (isRepo) {
-        state.repoDepth = depth;
-        break;
-      }
-      var next = (node.children && node.children.length) ? node.children[0] : null;
-      if (!next) {
-        // No repo node found in the chain; treat the last folder's depth as the
-        // parent depth so branches still render one level deeper.
-        state.repoDepth = depth;
-        break;
-      }
-      node = next;
-      depth += 1;
+    var roots = Array.isArray(state.tree) ? state.tree : [state.tree];
+    state.repoDepth = 0; // fallback if the forest contains no repo node
+    for (var i = 0; i < roots.length; i++) {
+      renderTreeNode(state, roots[i], 0);
     }
     state.branchDepth = state.repoDepth + 1;
+  }
+
+  /**
+   * Recursively render one folder/repo node and its children (pre-order). A node
+   * is EXPANDED unless it explicitly sets `expanded: false`; the flag selects the
+   * folder vs folder-open icon and the initial aria-expanded state. Children are
+   * always rendered regardless of the node's expanded state — recomputeVisibility()
+   * hides the descendants of any collapsed ancestor via their data-depth, so a
+   * later expand reveals pre-existing rows without a re-render. In this seed the
+   * collapsed folders (platform, backend) carry no children, so they reveal
+   * nothing (Figma 48966:64339). The repo node's depth is captured in
+   * state.repoDepth so branch/action rows attach beneath it.
+   */
+  function renderTreeNode(state, node, depth) {
+    if (!node) {
+      return;
+    }
+    var isRepo = node.type === 'repo';
+    var expanded = node.expanded !== false; // default to expanded
+    var row = createTreeRow(state, {
+      type: isRepo ? 'repo' : 'folder',
+      label: node.name,
+      path: node.path,
+      depth: depth,
+      icon: isRepo ? ICON.repo : (expanded ? ICON.folderOpen : ICON.folder),
+      expanded: expanded
+    });
+    state.branchTree.appendChild(row);
+
+    // Mirror the initial collapse state into state.collapsed so it stays in sync
+    // with the DOM (toggleExpand keeps it updated on every subsequent toggle).
+    if (node.path) {
+      state.collapsed[node.path] = !expanded;
+    }
+
+    if (isRepo) {
+      state.repoDepth = depth; // branches/actions attach at repoDepth + 1
+    }
+
+    var children = node.children;
+    if (children && children.length) {
+      for (var i = 0; i < children.length; i++) {
+        renderTreeNode(state, children[i], depth + 1);
+      }
+    }
   }
 
   /**
@@ -1038,10 +1079,13 @@
       return null;
     }
     data = data || (typeof window !== 'undefined' ? window.BranchData : null);
-    // Require a tree object and a non-empty ARRAY of branches. Array.isArray
-    // guards against a non-array `branches` (object/string/etc.) before any
-    // array operation below (robustness / graceful invalid-data handling).
-    if (!data || !data.tree || !Array.isArray(data.branches) || !data.branches.length) {
+    // Require a renderable tree — a single root node OR a non-empty forest array
+    // (renderChain normalizes either shape) — and a non-empty ARRAY of branches.
+    // Array.isArray guards against a non-array `branches` (object/string/etc.)
+    // before any array operation below (robustness / graceful invalid-data).
+    if (!data || !data.tree ||
+        (Array.isArray(data.tree) && !data.tree.length) ||
+        !Array.isArray(data.branches) || !data.branches.length) {
       return null; // nothing valid to render — leave the container untouched
     }
 

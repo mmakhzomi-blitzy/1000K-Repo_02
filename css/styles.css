@@ -180,6 +180,18 @@ main {
   color: var(--color-text-secondary);
 }
 
+/* In-column divider (Figma 48966:64688) — C4: a 1px #D9D9D9 rule spanning the
+   full content-column width, between the branch panel and the Environment setup
+   section. UA <hr> chrome (inset border + block margins) is reset to a single
+   top border; the 32px clearance above/below is supplied by main's 32px gap. */
+.content-divider {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--color-border-control);
+}
+
 /* --------------------------------------------------------------------------
    Page cards (Figma screen 48966:64339): the screen is a vertical stack of
    white rounded cards on the page background. Card A = app bar (.app-bar,
@@ -256,7 +268,7 @@ main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 var(--space-20);
+  padding: 0 calc(var(--space-16) + var(--space-4));
   background: transparent;
   border: none;
   cursor: pointer;
@@ -302,8 +314,9 @@ main {
 
 /* Primary "Build tech spec" button — DISABLED in this design. */
 .btn--primary {
-  /* Figma 48966:64379: 8px vertical / 20px horizontal padding. */
-  padding: var(--space-8) var(--space-20);
+  /* Figma 48966:64379: 8px vertical / 20px horizontal padding
+     (20px == space-16 + space-4, composed from manifest tokens). */
+  padding: var(--space-8) calc(var(--space-16) + var(--space-4));
   background: var(--color-accent);
   color: var(--color-surface);
   border-radius: var(--radius-32);
@@ -454,6 +467,9 @@ main {
   border-radius: var(--radius-36);
   background: transparent;
   cursor: pointer;
+  /* C1 — items are now <a href> links; suppress the UA link underline (colour is
+     already set explicitly below, so it is unaffected by the UA :link colour). */
+  text-decoration: none;
   /* text-nav (Inter 600 / 16px / 1.3); default primary. */
   font-weight: var(--font-weight-nav);
   font-size: var(--font-size-nav);
@@ -479,6 +495,17 @@ main {
   display: inline-flex;
 }
 
+/* Keyboard focus ring for the nav links (C1), matching the app's focus pattern:
+   no ring on pointer focus, an accent ring on keyboard focus. */
+.section-nav__item:focus {
+  outline: none;
+}
+
+.section-nav__item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
 /* --------------------------------------------------------------------------
    Phase 6 — Select controls (workspace 48966:64345, repository 48966:64451)
    (agent_prompt §8)
@@ -492,11 +519,6 @@ main {
   border-radius: var(--radius-32);
   background: transparent;
   cursor: pointer;
-}
-
-/* Environment variant uses the smaller 24px radius. */
-.select-control--environment {
-  border-radius: var(--radius-24);
 }
 
 .select-control__label {
@@ -543,9 +565,10 @@ main {
 
 .app-bar .select-control__label {
   font-weight: var(--font-weight-nav);
-  /* Body/Bold tracking (Figma 48966:64346) — override the base Regular
-     -0.0188em tracking that this SemiBold label would otherwise inherit. */
-  letter-spacing: var(--letter-spacing-bold);
+  /* SemiBold label (Figma 48966:64346) — reset the base Regular -0.0188em
+     tracking inherited from <body> (matches the manifest text-nav style, which
+     carries no tracking). */
+  letter-spacing: normal;
 }
 
 /* Repository select (Figma 48966:64451): fixed 473px hug (not full width),
@@ -583,7 +606,7 @@ main .select-control__label {
 .usage-pill {
   display: inline-flex;
   align-items: center;
-  padding: 0 var(--space-20);
+  padding: 0 calc(var(--space-16) + var(--space-4));
 }
 
 /* Bordered body: the two adjoined segments clipped to a single pill outline. */
@@ -657,11 +680,31 @@ main .select-control__label {
 /* Account (Figma 48966:64361): avatar + two-line name/plan stack + chevron.
    Padded box (8/12), radius 4, transparent fill. */
 .account {
+  /* C2 — now a <button>; neutralise UA button chrome to preserve the Figma look
+     (transparent fill, no border, inherited type, left-aligned content). */
+  background: transparent;
+  border: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: var(--space-8);
   padding: var(--space-8) var(--space-12);
   border-radius: var(--radius-4);
+}
+
+/* Keyboard focus ring for the account button (C2), matching the app's pattern:
+   no ring on pointer focus, an accent ring on keyboard focus. */
+.account:focus {
+  outline: none;
+}
+
+.account:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 .account__text {
@@ -676,8 +719,9 @@ main .select-control__label {
   font-weight: var(--font-weight-nav);
   font-size: var(--font-size-nav);
   line-height: var(--line-height-body);
-  /* Body/Bold tracking (Figma 48966:64366). */
-  letter-spacing: var(--letter-spacing-bold);
+  /* SemiBold name (Figma 48966:64366) — reset the base Regular -0.0188em
+     tracking inherited from <body> (manifest text-nav carries no tracking). */
+  letter-spacing: normal;
   color: var(--color-text-strong);
 }
 
@@ -841,6 +885,26 @@ main .select-control__label {
    border, no bold weight, no radius change; the label stays primary. */
 .tree-row--selected {
   background: var(--color-row-selected);
+}
+
+/* Focus indication (R7 / a11y). Selecting a branch (mouse OR keyboard) moves
+   focus to its row for correct focus management. Figma shows the #F2F0FE
+   background as the ONLY selection cue — no outline — so the UA default focus
+   ring is suppressed for pointer-driven focus (:focus). Keyboard users still
+   get a clearly visible accent ring via :focus-visible, which pointer clicks do
+   not trigger. outline-offset draws the ring inside the row so it is never
+   clipped by the panel edge. Applies to tree rows and the collapsed "Search"
+   action row (the active search input handles its own focus via :focus-within
+   below, which shows no box per Figma). */
+.tree-row:focus,
+.search-row:focus {
+  outline: none;
+}
+
+.tree-row:focus-visible,
+.search-row--action:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 
@@ -1030,9 +1094,10 @@ main .select-control__label {
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
   letter-spacing: var(--letter-spacing-body);
+  /* R7 (Figma 48966:68386): render the FULL branch path on a single line. No
+     overflow:hidden / text-overflow:ellipsis — the design shows the complete
+     path with no truncation, and the longest seed path fits the panel width. */
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .confirmation-bar__check {
@@ -1054,6 +1119,23 @@ main .select-control__label {
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+/* R7 (Figma 48966:68385): the confirmation-bar git-branch icon is #333333
+   (dark) — distinct from the #999999 tree-row git-branch icons. The shared
+   git-branch.svg asset is baked at #999999 (AAP §0.3.4: ONE reused asset), so
+   this single instance is recoloured to the primary-text token via a CSS mask
+   — a flat, colourspace-independent fill clipped to the asset silhouette. The
+   decorative <img> is hidden so the masked fill shows through; the asset file
+   and every tree-row instance stay #999999. */
+.confirmation-bar__icon {
+  background-color: var(--color-text-primary);
+  -webkit-mask: url("../assets/icons/git-branch.svg") no-repeat center / contain;
+          mask: url("../assets/icons/git-branch.svg") no-repeat center / contain;
+}
+
+.confirmation-bar__icon img {
+  display: none;
 }
 
 /* --------------------------------------------------------------------------
