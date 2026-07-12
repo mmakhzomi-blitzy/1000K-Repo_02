@@ -69,6 +69,18 @@ body {
   color: var(--color-text-primary);
 }
 
+/* Page content wrapper (flex item of body). A flex item's default
+ * `min-width: auto` refuses to shrink below its content's size, which would let
+ * the fixed-width .branch-tree establish a 1000px containing block and defeat
+ * its own `max-width: 100%` on viewports narrower than the panel (horizontal
+ * overflow). `min-width: 0` restores shrink-to-fit so .branch-tree's max-width
+ * caps correctly; the desktop layout is unchanged (the panel stays ~1000px and
+ * centered whenever the viewport is wide enough). */
+.page {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* Visually-hidden utility (non-visual a11y): used by #search-status and #load-more. */
 .sr-only {
   position: absolute;

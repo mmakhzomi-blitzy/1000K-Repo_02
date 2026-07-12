@@ -351,15 +351,95 @@ export function clearSelection(state) {
   if (state) state.selectedBranchId = null;
 }
 
+/* ==========================================================================
+ * Delegated activation — one listener set on the stable `#tree-list` root.
+ *
+ * The handlers are module-level NAMED functions (not per-init closures) that
+ * read the module-scoped {@link activeState}. This is what makes
+ * {@link initSelection} idempotent: a re-init only re-points `activeState` and
+ * is guarded so the click/keydown pair is attached exactly ONCE per
+ * `#tree-list`, mirroring the defensive delegation pattern in `tree.js`
+ * (`data-treeDelegationAttached`) and `pagination.js`. Without this guard each
+ * `initSelection` call stacked another listener pair, so N inits ran
+ * `selectBranch` N times per interaction (QA finding — listener leak).
+ * ==========================================================================*/
+
+/**
+ * The most recent shared UI state seen by {@link initSelection}. The delegated
+ * handlers read THIS (not a captured argument) so repeated inits target the
+ * current state object without ever adding another listener.
+ * @type {({selectedBranchId?: (string|null)}|null)}
+ */
+let activeState = null;
+
+/**
+ * `dataset` flag marking that the delegation listeners are already bound to a
+ * given `#tree-list`, so re-initialisation never stacks duplicates. Mirrors
+ * `tree.js`'s `treeDelegationAttached` guard (attribute:
+ * `data-selection-delegation-attached`).
+ */
+const DELEGATION_FLAG = 'selectionDelegationAttached';
+
+/**
+ * Delegated click handler: activate the branch row under the pointer. Resolving
+ * via `closest('[data-branch-id]')` means clicks on a row's icon or label still
+ * select the row.
+ *
+ * @param {MouseEvent} event
+ */
+function onSelectionClick(event) {
+  const treeList = getTreeList();
+  if (!treeList) return;
+  const target = event.target;
+  if (!target || typeof target.closest !== 'function') return;
+
+  const row = target.closest(BRANCH_ROW_SELECTOR);
+  if (row && treeList.contains(row)) {
+    selectBranch(row.dataset.branchId, activeState);
+  }
+}
+
+/**
+ * Delegated keydown handler: Enter, and Space (' ' modern; 'Spacebar' legacy
+ * Edge/IE) activate the focused branch row. Space's default page-scroll is
+ * suppressed.
+ *
+ * @param {KeyboardEvent} event
+ */
+function onSelectionKeydown(event) {
+  if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') {
+    return;
+  }
+
+  const treeList = getTreeList();
+  if (!treeList) return;
+  const target = event.target;
+  if (!target || typeof target.closest !== 'function') return;
+
+  const row = target.closest(BRANCH_ROW_SELECTOR);
+  if (row && treeList.contains(row)) {
+    // Prevent Space from scrolling the container / page on activation.
+    event.preventDefault();
+    selectBranch(row.dataset.branchId, activeState);
+  }
+}
+
 /**
  * Wire branch selection using ONE delegated listener set on the stable
  * `#tree-list` container, so selection keeps working after pagination appends
  * rows and after search re-renders the branch list.
  *
+ * Idempotent: the shared `state` is re-pointed on every call, but the
+ * click/keydown listener pair is attached exactly once per `#tree-list`
+ * (guarded by the `data-selection-delegation-attached` flag). Calling this
+ * again — e.g. if `app.js` re-inits selection on a repo change or re-render —
+ * is therefore always safe and never stacks listeners (matching the guarded
+ * pattern in `tree.js`/`pagination.js`).
+ *
  * Activation triggers: a click on a branch row, and Enter / Space while a
- * branch row is focused (Space's default page-scroll is suppressed). The
- * actual target is resolved with `event.target.closest('[data-branch-id]')`,
- * so clicks on a row's icon or label still select the row.
+ * branch row is focused. The target is resolved with
+ * `event.target.closest('[data-branch-id]')`, so clicks on a row's icon or
+ * label still select the row.
  *
  * @param {{selectedBranchId?: (string|null)}} [state]  Shared UI state object.
  * @returns {({selectedBranchId?: (string|null)}|undefined)} The same `state`
@@ -369,32 +449,15 @@ export function initSelection(state) {
   const treeList = getTreeList();
   if (!treeList) return undefined;
 
-  treeList.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!target || typeof target.closest !== 'function') return;
+  // Always re-point the delegated handlers at the latest shared state...
+  activeState = state;
 
-    const row = target.closest(BRANCH_ROW_SELECTOR);
-    if (row && treeList.contains(row)) {
-      selectBranch(row.dataset.branchId, state);
-    }
-  });
-
-  treeList.addEventListener('keydown', (event) => {
-    // Enter, and Space (' ' modern; 'Spacebar' legacy Edge/IE), activate.
-    if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') {
-      return;
-    }
-
-    const target = event.target;
-    if (!target || typeof target.closest !== 'function') return;
-
-    const row = target.closest(BRANCH_ROW_SELECTOR);
-    if (row && treeList.contains(row)) {
-      // Prevent Space from scrolling the container / page on activation.
-      event.preventDefault();
-      selectBranch(row.dataset.branchId, state);
-    }
-  });
+  // ...but bind the listener pair exactly once per #tree-list.
+  if (treeList.dataset[DELEGATION_FLAG] !== 'true') {
+    treeList.dataset[DELEGATION_FLAG] = 'true';
+    treeList.addEventListener('click', onSelectionClick);
+    treeList.addEventListener('keydown', onSelectionKeydown);
+  }
 
   return state;
 }

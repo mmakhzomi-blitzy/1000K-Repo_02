@@ -315,16 +315,31 @@ export function loadNextBranchPage(state) {
  * ==========================================================================*/
 
 /**
- * Observer callback: load the next page when the sentinel intersects the root
- * (expanded by {@link ROOT_MARGIN}) and no load is already in flight. Iterates
+ * Observer callback: when the sentinel intersects the root (expanded by
+ * {@link ROOT_MARGIN}) and no load is in flight, load the page this edge asked
+ * for, then keep draining while the sentinel remains in the load-zone. Iterates
  * defensively though only a single sentinel is ever observed.
+ *
+ * Robustness (jump-to-bottom — QA Issue 3): an instantaneous jump to the
+ * absolute bottom of the scroll region (`scrollTop = scrollHeight`, the End key,
+ * or a momentum fling) delivers only a SINGLE `false → true` intersection edge.
+ * A naive callback appends one page and then stalls, because a sentinel that is
+ * STILL within the load-zone produces no further edge for the observer to fire
+ * on. Rather than wait for another asynchronous edge, {@link drainWhileSentinelInView}
+ * synchronously re-checks the live geometry after each append (per the finding's
+ * "re-check `isIntersecting`" suggestion) and pulls the next page while the
+ * sentinel is still in range. Loading the edge's page first preserves the exact
+ * original single-page behavior (no regression); the drain then adds pages only
+ * when geometry warrants. The observer keeps observing the sentinel throughout,
+ * so ordinary later scrolls still trigger normally.
  *
  * @param {IntersectionObserverEntry[]} entries
  */
 function handleIntersect(entries) {
   for (const entry of entries) {
     if (entry.isIntersecting && !loading) {
-      loadNextBranchPage(activeState);
+      const appended = loadNextBranchPage(activeState);
+      if (appended) drainWhileSentinelInView();
       break;
     }
   }
@@ -335,6 +350,61 @@ function disconnectObserver() {
   if (observer) {
     observer.disconnect();
     observer = null;
+  }
+}
+
+/**
+ * Numeric form of {@link ROOT_MARGIN} (px) for the synchronous geometry test in
+ * {@link sentinelInLoadZone}. Parsed once so the manual re-check mirrors the
+ * exact prefetch distance the IntersectionObserver itself applies.
+ */
+const ROOT_MARGIN_PX = parseInt(ROOT_MARGIN, 10) || 0;
+
+/**
+ * Synchronously test whether the sentinel currently lies within the observer's
+ * load-zone — the root's box expanded by {@link ROOT_MARGIN} on every side —
+ * using live geometry. `getBoundingClientRect()` forces a layout flush, so when
+ * called immediately after appending rows it reflects their real, post-reflow
+ * positions. Returns false when the root or sentinel is absent.
+ *
+ * @returns {boolean} True if the sentinel intersects the margin-expanded root.
+ */
+function sentinelInLoadZone() {
+  const root = getTreeList();
+  const sentinel = getSentinel();
+  if (!root || !sentinel) return false;
+  const rootRect = root.getBoundingClientRect();
+  const sentRect = sentinel.getBoundingClientRect();
+  // Vertical overlap with the root box grown by the prefetch margin. The
+  // sentinel spans the full width, so only the vertical axis is decisive.
+  return (
+    sentRect.top <= rootRect.bottom + ROOT_MARGIN_PX &&
+    sentRect.bottom >= rootRect.top - ROOT_MARGIN_PX
+  );
+}
+
+/**
+ * Append pages while the sentinel remains inside the load-zone (jump-to-bottom
+ * hardening — QA Issue 3; see {@link handleIntersect}). After the intersection
+ * edge's first page is loaded, this synchronously re-checks the geometry and
+ * pulls further pages while a still-in-range sentinel would otherwise sit
+ * without a fresh edge to fire on.
+ *
+ * Termination is guaranteed and the loop is tightly bounded: every successful
+ * append inserts ≥1 row before the sentinel (pushing it downward) and advances
+ * `state.loadedBranchCount`, so the sentinel leaves the zone after enough rows;
+ * {@link loadNextBranchPage} returns false at exhaustion (or while searching);
+ * and exhaustion nulls the observer via {@link markExhausted} (which the guard
+ * detects). A hard iteration cap (branch count + a small margin) is a final
+ * belt-and-suspenders guard so the loop can never spin unbounded.
+ */
+function drainWhileSentinelInView() {
+  const cap = getActiveBranches(activeState).length + 2;
+  let iterations = 0;
+  while (observer && !loading && sentinelInLoadZone()) {
+    const appended = loadNextBranchPage(activeState);
+    if (!appended) break; // exhausted, searching, or nothing to add
+    if (++iterations >= cap) break; // paranoia: never spin unbounded
   }
 }
 
