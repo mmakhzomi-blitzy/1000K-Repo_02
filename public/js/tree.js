@@ -396,8 +396,8 @@ function createIcon(className, fileName) {
 /**
  * Build a fully-formed, accessible row element for a tree node.
  *
- * Child order matches the design: (folders only) a disclosure chevron → the
- * type icon → the text label. Depth indentation is applied entirely via the
+ * Child order matches the design: (folders and repositories) a disclosure
+ * chevron → the type icon → the text label. Depth indentation is applied via the
  * `data-depth` → `--row-depth` padding-left formula in branch-list.css, so NO
  * per-level spacer elements are emitted. Folders/expandable repos expose
  * `aria-expanded`; branch rows carry `data-branch-id`/`data-path` and reflect
@@ -440,8 +440,14 @@ function createRow(node, state) {
     if (selected) row.classList.add(CLASS_SELECTED);
   }
 
-  // Disclosure chevron — folders only (rotated 90° when expanded, via CSS).
-  if (node.type === 'folder') {
+  // Disclosure chevron — every folder AND repository row (the .tree-row container
+  // types). Figma 48966:71258 renders a ">" chevron on BOTH repos (customer-portal
+  // AND admin-dash), byte-identical to folder chevrons; the chevron occupies the
+  // 24px disclosure column that .tree-row's padding-left reserves, so emitting it
+  // for repos restores their 28px-per-level icon alignment (F-01). CSS rotates it
+  // 90° only when the row carries aria-expanded="true" (an expandable, open node);
+  // a childless repo keeps the collapsed ">" and its toggle is a graceful no-op.
+  if (node.type === 'folder' || node.type === 'repo') {
     row.appendChild(createIcon(CLASS_CHEVRON, ICONS.chevron));
   }
 
@@ -642,6 +648,41 @@ export function clearBranchRows() {
   removeBranchRowsFromDom();
   ensureSentinelLast();
   ensureRovingTabindex();
+}
+
+/**
+ * F-05 — focus the branch row for `branchId` if it is currently rendered.
+ *
+ * Used by search.js when an OPEN search is dismissed by a branch SELECTION
+ * (Figma W6): `restoreList()` re-renders the resting branch region, which
+ * REPLACES the filtered row that held keyboard focus, so focus would otherwise
+ * fall to `<body>`. Once the resting list is back in the DOM the caller invokes
+ * this to move focus onto the newly-rendered selected row — `createRow`
+ * re-applies the selected highlight from `state`, so that row is both
+ * highlighted AND focused. Focusing the row fires `onTreeFocusIn`, so it also
+ * becomes the single roving tab stop, keeping keyboard navigation consistent.
+ *
+ * Rows are matched by their `data-branch-id` (no CSS-selector escaping needed).
+ *
+ * @param {string} branchId  The id of the branch row to focus.
+ * @returns {boolean} true when the row was found and focus landed on it; false
+ *   otherwise (e.g. the selected branch lies outside the current paginated
+ *   slice), so the caller can fall back to a deliberate stable target.
+ */
+export function focusBranchRow(branchId) {
+  if (!branchId) return false;
+  const treeList = getTreeList();
+  if (!treeList) return false;
+  let row = null;
+  for (const candidate of treeList.querySelectorAll('[data-branch-id]')) {
+    if (candidate.dataset.branchId === branchId) {
+      row = candidate;
+      break;
+    }
+  }
+  if (!row) return false;
+  focusRow(row);
+  return document.activeElement === row;
 }
 
 /* ============================================================================

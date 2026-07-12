@@ -49,7 +49,7 @@
  */
 
 import { getBranches, ACTIVE_REPO_ID } from './data.js';
-import { renderBranchRows } from './tree.js';
+import { renderBranchRows, focusBranchRow } from './tree.js';
 
 /* ============================================================================
  * Constants — DOM hooks, timing, and verbatim content strings. The ids/classes
@@ -430,8 +430,19 @@ export function initSearch(state, deps) {
     input.focus();
   }
 
-  /** Dismiss search: restore the affordance and the resting branch list (R7). */
-  function close() {
+  /**
+   * Dismiss search: restore the affordance and the resting branch list (R7).
+   *
+   * @param {{ focusBranchId?: string }} [options] Optional focus intent. When a
+   *   branch SELECTION dismisses an OPEN search (Figma W6, driven from app.js),
+   *   the selected branch id is passed so keyboard focus is restored to the
+   *   newly-rendered selected row after the resting list is back in the DOM
+   *   (F-05) — otherwise `restoreList()` replaces the filtered row that held
+   *   focus and focus drops to `<body>`. Escape, the clear-×, and blur pass NO
+   *   intent and are unchanged: Escape and the clear-× restore the affordance
+   *   themselves, and a blur means the user deliberately moved focus elsewhere.
+   */
+  function close(options) {
     if (!uiState.searchActive) return; // idempotent
 
     // Flip state FIRST so the synchronous blur that follows hiding the input is
@@ -457,6 +468,18 @@ export function initSearch(state, deps) {
     restoreList();
     resumePagination();
     announce('');
+
+    // F-05: restore keyboard focus ONLY when a branch selection drove the
+    // dismissal (a `focusBranchId` intent). The pre-close focus was on the
+    // filtered row that `restoreList()` just replaced; without this, focus
+    // would fall to <body>. `createRow` re-applied the selected highlight from
+    // state during restore, so the target row is both highlighted and focused.
+    const focusBranchId = options && options.focusBranchId;
+    if (focusBranchId && !focusBranchRow(focusBranchId)) {
+      // The selected branch is outside the restored paginated slice — fall back
+      // to a deliberate, always-present stable target (the restored affordance).
+      affordance.focus();
+    }
   }
 
   /* ---- event handlers -------------------------------------------------- */

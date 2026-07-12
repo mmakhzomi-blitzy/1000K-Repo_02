@@ -16,6 +16,14 @@
   -->
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/branch-list.css">
+  <!--
+    Favicon: an intentional, self-contained brand mark declared as an inline
+    base64 SVG data URI (a #5B39F3 rounded square, the brand purple). Because it
+    is a data URI it triggers NO network request and adds NO remote dependency,
+    which both honours the project's zero-dependency posture and eliminates the
+    default "/favicon.ico" 404 + console error that browsers otherwise emit.
+  -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2Ij48cmVjdCB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHJ4PSI0IiBmaWxsPSIjNUIzOUYzIi8+PC9zdmc+">
 </head>
 <body>
   <!-- Visually-hidden document heading (structure for assistive tech; the Figma
@@ -42,8 +50,21 @@
         carrying aria-level (1-based depth), a data-depth="N" indentation hook, a
         24px icon slot, and a label; folder / repository rows additionally expose
         aria-expanded. Keyboard follows the Tree pattern (single tab stop + roving
-        tabindex; Arrow/Home/End move focus — see js/tree.js). The tree also hosts
-        the Search controls and the pagination sentinel, which are not treeitems.
+        tabindex; Arrow/Home/End move focus — see js/tree.js).
+
+        ARIA ownership reconciliation (F-08): the non-treeitem nodes that share this
+        container — the search input row, the empty-state message, and the pagination
+        sentinel — are marked role="none" so they are removed from the tree's owned
+        item structure (they are non-focusable, so role="none" is honoured). The
+        resting "Search" affordance is a genuine, Figma-mandated interactive row that
+        must remain a real <button>: it is a single Tab stop that opens the inline
+        input on Enter/Space. It therefore stays a <button> — role="none" is ignored
+        by user agents on focusable elements, and converting it to a treeitem would
+        pull it into the roving-tabindex set (changing Tab→Arrow reachability) and,
+        because it carries aria-expanded, would make the Tree keydown handler
+        preventDefault Enter/Space and suppress opening the search. Both would break
+        the "preserve exact flat visual order and keyboard behavior" constraint, so
+        the affordance's <button> semantics are retained deliberately.
       -->
       <div class="branch-tree__list" id="tree-list" role="tree" aria-label="Codebase branches">
 
@@ -76,7 +97,7 @@
           Figma "search open / empty" frame (48966:70647) renders it VISIBLE in the
           empty state (§0.2.2/§0.2.4/§0.2.5), so it is not gated on field content.
         -->
-        <div class="search-input-row" id="search-input-row" data-depth="4" hidden>
+        <div class="search-input-row" id="search-input-row" data-depth="4" role="none" hidden>
           <img class="branch-tree__icon" src="assets/icons/icon_search.svg" alt="" aria-hidden="true" width="24" height="24">
           <label class="sr-only" for="branch-search-input">Search branches</label>
           <input
@@ -100,7 +121,7 @@
           branches. aria-hidden because the equivalent result is announced through
           the #search-status live region below (avoids a duplicate announcement).
         -->
-        <p class="empty-state" id="empty-state" data-depth="4" hidden aria-hidden="true">Branch not found</p>
+        <p class="empty-state" id="empty-state" data-depth="4" role="none" hidden aria-hidden="true">Branch not found</p>
 
         <!--
           Pagination sentinel — a zero-footprint 1px IntersectionObserver target
@@ -108,7 +129,7 @@
           NO spinner, skeleton, "loading more" row, scrollbar chrome, count badge,
           or progress bar — pagination is a pure clip at 400px — so it is invisible.
         -->
-        <div id="pagination-sentinel" aria-hidden="true"></div>
+        <div id="pagination-sentinel" role="none" aria-hidden="true"></div>
       </div>
 
       <!--
@@ -124,12 +145,14 @@
         ConfirmationFooter (Figma 48966:68383) — the pinned bottom bar shown when a
         branch is selected. Full-width, TOP border only, bottom-corner radius
         (0 0 12 12), pinned to the container bottom while the list scrolls above.
-        Left-to-right: git-branch icon, the full branch path (filled into
-        #confirmation-path), and the purple check-circle (24×24). Hidden until a
-        selection exists.
+        Left-to-right: git-branch icon (footer-context #333333 tint — Figma node
+        48966:68385 bakes fill="#333333", darker than the #999999 branch-row icon;
+        a dedicated icon_git_branch_footer.svg carries this tint), the full branch
+        path (filled into #confirmation-path), and the purple check-circle (24×24).
+        Hidden until a selection exists.
       -->
       <div class="branch-tree__footer" id="confirmation-footer" hidden>
-        <img class="branch-tree__icon" src="assets/icons/icon_git_branch.svg" alt="" aria-hidden="true" width="24" height="24">
+        <img class="branch-tree__icon" src="assets/icons/icon_git_branch_footer.svg" alt="" aria-hidden="true" width="24" height="24">
         <span class="sr-only">Selected branch: </span>
         <span class="branch-tree__footer-path" id="confirmation-path"></span>
         <img class="branch-tree__check" src="assets/icons/icon_check_circle.svg" alt="" aria-hidden="true" width="24" height="24">
@@ -142,6 +165,16 @@
       Non-visual accessibility layer only; it does not alter the visual design.
     -->
     <div class="sr-only" id="search-status" role="status" aria-live="polite"></div>
+
+    <!--
+      Visually-hidden ARIA live region for branch SELECTION (F-07). When a branch
+      is chosen, js/selection.js announces "Selected branch: <full path>" here so
+      the revealed confirmation path (mirrored in the pinned footer) is proactively
+      conveyed to assistive tech. A dedicated region (separate from #search-status)
+      prevents search and selection announcements from clobbering one another.
+      Non-visual accessibility layer only; it does not alter the visual design.
+    -->
+    <div class="sr-only" id="selection-status" role="status" aria-live="polite"></div>
   </main>
 
   <!--

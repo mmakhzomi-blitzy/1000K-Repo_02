@@ -53,6 +53,14 @@ const TREE_LIST_ID = 'tree-list';
 /** id of the pinned confirmation footer (hidden until a selection is made). */
 const FOOTER_ID = 'confirmation-footer';
 
+/**
+ * id of the visually-hidden ARIA live region that proactively announces the
+ * selected branch's full path (F-07). Declared in index.html as
+ * `<div id="selection-status" role="status" aria-live="polite">`, kept separate
+ * from the search status region so the two never clobber one another.
+ */
+const SELECTION_STATUS_ID = 'selection-status';
+
 /** Attribute selector identifying a selectable branch row. */
 const BRANCH_ROW_SELECTOR = '[data-branch-id]';
 
@@ -80,8 +88,18 @@ const FOOTER_VISIBLE_CLASS = 'branch-tree__footer--visible';
  * Document-relative icon asset paths (exact filenames from Technical Spec
  * §0.2.5). Resolved relative to public/index.html, which lives at the public/
  * root, so `assets/icons/…` maps to public/assets/icons/….
+ *
+ * F-03: the confirmation footer's git-branch icon uses the footer-context
+ * `#333333` tint — Figma node 48966:68385 bakes `fill="#333333"`, which is
+ * DARKER than the `#999999` branch-row icon (icon_git_branch.svg) that tree.js
+ * renders. Both share an identical glyph path and differ ONLY in fill, so a
+ * dedicated icon_git_branch_footer.svg carries the footer tint while the row
+ * asset is left untouched. (The AAP §0.2.4 table transcribed `#999999` for the
+ * footer; the AAP's own governing rule §0.9 — "match the Figma design exactly,
+ * exact hex values" — is authoritative and resolves that transcription to the
+ * Figma-confirmed `#333333`.)
  */
-const ICON_GIT_BRANCH = 'assets/icons/icon_git_branch.svg';
+const ICON_GIT_BRANCH_FOOTER = 'assets/icons/icon_git_branch_footer.svg';
 const ICON_CHECK_CIRCLE = 'assets/icons/icon_check_circle.svg';
 
 /** Class hooks for the footer's children (visuals handled by branch-list.css). */
@@ -109,6 +127,29 @@ function getTreeList() {
  */
 function getFooter() {
   return document.getElementById(FOOTER_ID);
+}
+
+/**
+ * @returns {HTMLElement|null} The `#selection-status` live region, or null.
+ */
+function getSelectionStatus() {
+  return document.getElementById(SELECTION_STATUS_ID);
+}
+
+/**
+ * Proactively announce the selected branch's full path to assistive tech
+ * (F-07). Writes `Selected branch: <full path>` into the polite live region so
+ * the revealed confirmation path (mirrored visually in the pinned footer) is
+ * conveyed without the user having to navigate to the footer. Purely a
+ * non-visual accessibility layer — it changes nothing on screen. Passing an
+ * empty/falsy path clears the region (used when a selection is reset).
+ *
+ * @param {string} path  The selected branch's full path, or '' to clear.
+ */
+function announceSelection(path) {
+  const region = getSelectionStatus();
+  if (!region) return;
+  region.textContent = path ? `Selected branch: ${path}` : '';
 }
 
 /**
@@ -184,7 +225,8 @@ function clearSelectionHighlight() {
  * branch, then reveal it.
  *
  * Footer children render in Figma order (§0.2.4): the git-branch icon
- * (#999999, 16×16) → the full-path text (#333333) → the check-circle
+ * (footer-context #333333, 16×16 — Figma 48966:68385, distinct from the
+ * #999999 branch-row icon) → the full-path text (#333333) → the check-circle
  * (#5B39F3, 24×24). On repeat selections the existing child nodes are reused
  * and only the path text is updated, so children are never duplicated.
  *
@@ -207,7 +249,7 @@ export function renderConfirmationFooter(branchId) {
 
     const branchIcon = document.createElement('img');
     branchIcon.className = FOOTER_ICON_CLASS;
-    branchIcon.src = ICON_GIT_BRANCH;
+    branchIcon.src = ICON_GIT_BRANCH_FOOTER;
     branchIcon.alt = '';
     branchIcon.setAttribute('aria-hidden', 'true');
     branchIcon.width = GIT_BRANCH_ICON_SIZE;
@@ -276,7 +318,10 @@ export function selectBranch(branchId, state) {
     row.setAttribute('aria-selected', 'true');
   }
 
-  renderConfirmationFooter(branchId);
+  const path = renderConfirmationFooter(branchId);
+
+  // F-07: proactively announce the revealed full path to assistive tech.
+  announceSelection(path);
 
   return branchId;
 }
@@ -299,6 +344,9 @@ export function clearSelection(state) {
     footer.hidden = true;
     footer.classList.remove(FOOTER_VISIBLE_CLASS);
   }
+
+  // F-07: drop any stale selection announcement when the selection is reset.
+  announceSelection('');
 
   if (state) state.selectedBranchId = null;
 }

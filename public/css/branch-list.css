@@ -243,15 +243,17 @@ body {
   color: var(--color-brand-purple);
 }
 
-/* SearchAffordanceRow — resting "Search" affordance (Figma 48966:67318). Purple
- * magnifier (asset) + purple "Search" label in Inter Medium 500 (search-base
- * type; no letter tracking). Transparent by default; hover paints the full-width
- * square lavender band. No bottom divider, no input in this state. */
+/* SearchAffordanceRow — resting "Search" affordance (Figma 48966:67318, label
+ * node 48966:67960). Purple magnifier (asset) + purple "Search" label in the
+ * tree/action-row type — Inter Regular 400, 16px/1.5em, letter-spacing -0.0188em
+ * — INHERITED from the shared row base above (it must match the surrounding tree
+ * rows, NOT the search-input base's Inter Medium 500). The active search INPUT
+ * keeps the search-base type; only this resting affordance uses the tree-row type.
+ * Transparent by default; hover paints the full-width square lavender band. No
+ * bottom divider, no input in this state. */
 .search-affordance {
   padding-left: calc(var(--space-row-h) + (var(--row-depth, 0) + 1) * var(--space-indent-step));
   color: var(--color-brand-purple);
-  font: var(--text-search-base);
-  letter-spacing: normal;
 }
 
 .search-affordance:hover {
@@ -312,11 +314,20 @@ body {
   -webkit-appearance: none;
 }
 
-/* Accessible focus indicator only (no resting box/background/shadow). */
+/* Box-less focus (Figma active-search nodes 48966:70647 / 48966:72061 are
+ * box-less — Fill:none, radius 0, ONLY a 1px #D9D9D9 bottom divider, unchanged
+ * in the focused frame too). The native input carries NO focus box of its own;
+ * the visible focus indicator is the native text caret, which the Figma
+ * "|Search" node (48966:70831) itself depicts. Per AAP §0.9 / §0.3.3,
+ * accessibility is a NON-VISUAL layer that must not alter the Figma appearance,
+ * so NO outline, ring, recolor, or divider thickening is added on focus — the
+ * divider stays exactly 1px #D9D9D9 in every state for 100% Figma parity.
+ * Suppress every UA/author focus ring so no 4-sided box appears. */
+#branch-search-input:focus,
 #branch-search-input:focus-visible,
+.search-input-row input[type="search"]:focus,
 .search-input-row input[type="search"]:focus-visible {
-  outline: 2px solid var(--color-brand-purple);
-  outline-offset: 2px;
+  outline: none;
 }
 
 /* Trailing clear-× button — transparent, chrome-less (× color baked in asset). */

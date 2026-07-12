@@ -156,12 +156,20 @@ function init() {
 
 /**
  * Attach the delegated activation listeners that dismiss an OPEN search once a
- * branch row is selected. Mirrors selection.js's own click + Enter/Space
- * activation model so keyboard and pointer behave identically, and is guarded
- * by `search.isActive()` so it does nothing while search is closed. Called
+ * branch row is selected (Figma W6). Listens on #tree-list for both click and
+ * Enter/Space, matching selection.js's activation triggers, and is guarded by
+ * `search.isActive()` so it is a strict no-op while search is closed. Called
  * exactly once from {@link init}.
  *
- * @param {{ isActive: () => boolean, close: () => void }} search
+ * F-05 — keyboard/pointer focus parity: on a pointer selection the click has
+ * already moved focus off the row that restoreList() removes, so no focus is
+ * lost. On a keyboard selection, focus is ON the filtered row that restoreList()
+ * replaces, which would otherwise drop focus to <body>. To make the two paths
+ * truly equivalent, the selected branch id is forwarded to `search.close()`,
+ * which restores focus to the newly-rendered selected row (or a stable
+ * fallback) after the resting list renders.
+ *
+ * @param {{ isActive: () => boolean, close: (options?: { focusBranchId?: string }) => void }} search
  *   The handle returned by {@link initSearch}.
  */
 function wireCloseSearchOnSelection(search) {
@@ -178,7 +186,11 @@ function wireCloseSearchOnSelection(search) {
     if (!target || typeof target.closest !== 'function') return;
     const row = target.closest(BRANCH_ROW_SELECTOR);
     if (row && treeList.contains(row)) {
-      search.close();
+      // F-05: forward the selected branch id so search.close() restores
+      // keyboard focus to the newly-rendered selected row. Without it,
+      // restoreList() replaces the filtered row that held focus and focus
+      // drops to <body> on keyboard selection.
+      search.close({ focusBranchId: row.dataset.branchId });
     }
   };
 

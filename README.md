@@ -27,10 +27,11 @@ browser.
 ### Notes
 
 - The static foundation (markup, design tokens, component styles, Inter fonts,
-  icons, and the branch data model) is in place; the interactive behavior
-  (folder expand/collapse, branch pagination, inline search/filter, and branch
-  selection with the confirmation footer) is provided by the ES module layer
-  under `public/js/` and is being added incrementally.
+  icons, and the branch data model) and the interactive behavior are fully
+  implemented. The ES module layer under `public/js/` provides folder
+  expand/collapse, branch pagination (infinite scroll), inline search/filter
+  with the "Branch not found" empty state, search dismissal, and branch
+  selection with the confirmation footer.
 - The existing Node.js server (`server.js`) returns a plain-text
   "Hello, World!" response for every request and does not serve these static
   files; wiring it to serve `public/` is intentionally out of scope (a separate
