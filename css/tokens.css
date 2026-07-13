@@ -1,0 +1,111 @@
+/* ==========================================================================
+   tokens.css — Design Tokens (CSS Custom Properties)
+   --------------------------------------------------------------------------
+   Blitzy Platform 2.0 · "Branch pagination + search"
+
+   Single source of truth for design tokens, transcribed verbatim from the
+   Figma Token Manifest (file key 91TpUu5OYVLFkPdcBCmOUu; primary screen
+   48966:64339). This is the FIRST stylesheet linked in index.html, loaded
+   before css/styles.css. Every value in css/styles.css resolves to one of
+   the tokens below via var(--token); therefore these token NAMES are a
+   stable contract and must not be renamed.
+
+   Rules honored by this file:
+     - Plain vanilla CSS. No preprocessor, framework, or build step.
+     - No @import, no @font-face, no external/web-font/CDN references.
+     - Tokens ONLY, declared on :root. No component or layout selectors.
+     - No shadow tokens and no gradient tokens (the design contains none).
+     - Exact hex/px values from the manifest — never rounded or converted.
+
+   Sections: Colors · Typography · Radii · Spacing
+   ========================================================================== */
+
+:root {
+  /* ------------------------------------------------------------------------
+     Colors (11)
+     Exact hex values from the Figma Token Manifest.
+     ------------------------------------------------------------------------ */
+  --color-accent: #5B39F3;          /* purple accent: magnifier, action labels, active step, check-circle, links */
+  --color-surface: #FFFFFF;         /* card / surface background */
+  --color-page-bg: #F5F5F5;         /* page background */
+  --color-row-selected: #F2F0FE;    /* selected branch row background (the only selection cue) */
+  --color-border: #E9E9E9;          /* app-bar border */
+  --color-border-control: #D9D9D9;  /* control borders, panel border, dividers, inactive step outline */
+  --color-text-primary: #333333;    /* branch/folder labels, path text, section-nav default */
+  --color-text-strong: #000000;     /* typed search text, active step label, usage value, clear "×" */
+  /* BLITZY [A11Y] #999999 on the #FFFFFF surface computes to ~2.8:1, below the
+     WCAG AA 4.5:1 threshold for normal text. This value is retained deliberately
+     to match the Figma design contract EXACTLY (authoritative per AAP §0.3.2,
+     usage 10). Flagged for designer review — do NOT darken without a corresponding
+     Figma update, per the design-system precedence rule (Figma over WCAG). */
+  --color-text-secondary: #999999;  /* placeholder, empty-state text, inactive step, git-branch icon, "/ total" */
+  --color-icon-medium: #666666;     /* help / settings icons */
+  --color-avatar-stroke: #D4CBFC;   /* 0.5px avatar ring */
+
+  /* ------------------------------------------------------------------------
+     Typography (Inter family + 7 text styles)
+     Line-heights are unitless em multiples (1.3, 1.5) except text-button,
+     which uses a fixed 24px line-height. Two letter-spacing values exist:
+     Body/Regular (-0.0188em, text-body) and Body/Bold (-0.0025em, used by the
+     SemiBold app-bar Workspace label and the account name).
+     ------------------------------------------------------------------------ */
+  --font-family-base: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* text-h4 — Inter 600 / 32px / 1.3 */
+  --font-size-h4: 32px;
+  --font-weight-h4: 600;
+  --line-height-h4: 1.3;
+
+  /* text-h5 — Inter 600 / 24px / 1.3 */
+  --font-size-h5: 24px;
+  --font-weight-h5: 600;
+  --line-height-h5: 1.3;
+
+  /* text-body — Inter 400 / 16px / 1.5 / -0.0188em */
+  --font-size-body: 16px;
+  --font-weight-body: 400;
+  --line-height-body: 1.5;
+  --letter-spacing-body: -0.0188em;
+
+  /* text-body-sm — Inter 400 / 14px / 1.5 */
+  --font-size-body-sm: 14px;
+  --font-weight-body-sm: 400;
+  --line-height-body-sm: 1.5;
+
+  /* text-nav — Inter 600 / 16px / 1.3 */
+  --font-size-nav: 16px;
+  --font-weight-nav: 600;
+  --line-height-nav: 1.3;
+
+  /* text-button — Inter 600 / 16px / 24px */
+  --font-size-button: 16px;
+  --font-weight-button: 600;
+  --line-height-button: 24px;
+
+  /* text-search — Inter 500 / 16px / 1.5 */
+  --font-size-search: 16px;
+  --font-weight-search: 500;
+  --line-height-search: 1.5;
+
+  /* ------------------------------------------------------------------------
+     Radii (7)
+     ------------------------------------------------------------------------ */
+  --radius-4: 4px;
+  --radius-8: 8px;        /* app bar */
+  --radius-12: 12px;      /* branch panel; confirmation-bar bottom corners */
+  --radius-24: 24px;      /* usage-pill split corners; environment select */
+  --radius-32: 32px;      /* select controls, primary button */
+  --radius-36: 36px;      /* section-nav pill, icon-only buttons */
+  --radius-100: 100px;    /* avatar circle */
+
+  /* ------------------------------------------------------------------------
+     Spacing (7)
+     ------------------------------------------------------------------------ */
+  --space-4: 4px;         /* tree-row gap */
+  --space-8: 8px;         /* select-control gap */
+  --space-12: 12px;       /* tree-body vertical padding, row horizontal padding */
+  --space-16: 16px;       /* app-bar vertical padding */
+  --space-24: 24px;
+  --space-32: 32px;       /* app-bar horizontal padding */
+  --space-48: 48px;
+}

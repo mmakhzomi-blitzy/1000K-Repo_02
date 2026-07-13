@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect codebase · Blitzy Platform 2.0</title>
+  <!-- SEO: concise page summary for search engines / link previews. Describes the
+       "Connect codebase" wizard step and its repository branch selector. -->
+  <meta name="description" content="Connect a repository to Blitzy Platform 2.0 and select a branch to index. Browse, paginate, and search your codebase branches to generate an accurate tech spec.">
+
+
+  <!-- No-op favicon: the design defines no favicon asset, so this empty data URI
+       suppresses the browser's automatic /favicon.ico request and keeps the
+       console free of a spurious 404. Adds no visible UI. -->
+  <link rel="icon" href="data:,">
+
+  <!--
+    Blitzy Platform 2.0 — "Branch pagination + search" (Requirements R1, R8).
+    Semantic, framework-agnostic page shell for the "Connect codebase" wizard
+    step. Structure + semantic class names + ARIA only — every visual value is
+    token-driven and defined in the linked stylesheets (no inline styles).
+
+    Load order is a strict contract:
+      1. css/tokens.css  (design tokens) — MUST be first
+      2. css/styles.css  (layout + component styles) — resolves the tokens
+    Scripts load at end of <body> in dependency order: data.js ->
+    branch-selector.js -> app.js.
+  -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ===================================================================
+       App bar (Figma 48966:64340)
+       Left cluster: Blitzy logo + Workspace select.
+       Right cluster: usage pill + help + settings + account.
+       =================================================================== -->
+  <header class="app-bar">
+    <div class="app-bar__group app-bar__group--left">
+      <span class="app-bar__logo">
+        <img src="assets/icons/blitzy-logo.svg" alt="Blitzy" width="25" height="36">
+      </span>
+
+      <!-- Workspace select (48966:64345): label + trailing chevron, no leading icon.
+           app.js gives .select-control a benign open/close affordance. -->
+      <button class="select-control" type="button" aria-haspopup="listbox" aria-expanded="false">
+        <span class="select-control__label">Workspace</span>
+        <span class="select-control__icon">
+          <img src="assets/icons/chevron-down.svg" alt="" aria-hidden="true" width="24" height="24">
+        </span>
+      </button>
+    </div>
+
+    <div class="app-bar__group app-bar__group--right">
+      <!-- Usage pill (48966:64349): the outer frame carries 20px horizontal
+           padding (transparent); the bordered body holds the two segments —
+           left </> + "#%" (accent); right "#" used + "/ #" total. -->
+      <div class="usage-pill">
+        <span class="usage-pill__body">
+          <span class="usage-pill__segment usage-pill__segment--left">
+            <img src="assets/icons/code-alt.svg" alt="" aria-hidden="true" width="16" height="16">
+            <span>#%</span>
+          </span>
+          <span class="usage-pill__segment usage-pill__segment--right">
+            <span class="usage-pill__used">#</span>
+            <span class="usage-pill__total">/ #</span>
+          </span>
+        </span>
+      </div>
+
+      <button class="app-bar__icon" type="button" aria-label="Help">
+        <img src="assets/icons/help-circle.svg" alt="" aria-hidden="true" width="24" height="24">
+      </button>
+      <button class="app-bar__icon" type="button" aria-label="Settings">
+        <img src="assets/icons/cog.svg" alt="" aria-hidden="true" width="24" height="24">
+      </button>
+
+      <!-- Account (48966:64361): avatar + name/plan text stack + trailing chevron.
+           C2 — a focusable <button> with an accessible name (was a non-focusable
+           <div>). The avatar is decorative here since aria-label names the control.
+           WCAG 2.5.3 (Label in Name): the accessible name INCLUDES the visible
+           text ("{User}", "{Short plan}") so speech-input users can target the
+           control by its visible label; the "Account" prefix supplies role context. -->
+      <button class="account" type="button" aria-label="Account: {User}, {Short plan}">
+        <span class="avatar">
+          <img src="assets/images/profile-picture.png" alt="" aria-hidden="true" width="32" height="32">
+        </span>
+        <span class="account__text">
+          <span class="account__name">{User}</span>
+          <span class="account__plan">{Short plan}</span>
+        </span>
+        <img class="account__chevron" src="assets/icons/header-chevron.svg" alt="" aria-hidden="true" width="10" height="6">
+      </button>
+    </div>
+  </header>
+
+  <!-- ===================================================================
+       Card B — "Final" band (Figma 48966:64371): white card wrapping the
+       project header + wizard stepper. Fill #FFFFFF, 1px #E9E9E9, radius 8,
+       padding 32/32/0, 48px gap between header and stepper.
+       =================================================================== -->
+  <div class="card card--band">
+  <!-- ===================================================================
+       Project header (Figma 48966:64372): title + action buttons.
+       =================================================================== -->
+  <div class="project-header">
+    <h1 class="project-header__title">{Project name}</h1>
+
+    <div class="project-header__actions">
+      <!-- Primary "Build tech spec" button — DISABLED per the design. -->
+      <button class="btn btn--primary" type="button" disabled aria-disabled="true">
+        <img src="assets/icons/file.svg" alt="" aria-hidden="true" width="20" height="20">
+        Build tech spec
+      </button>
+
+      <!-- Icon-only actions (chat, group, more). -->
+      <button class="btn btn--icon" type="button" aria-label="Chat">
+        <img src="assets/icons/chat.svg" alt="" aria-hidden="true" width="23" height="22">
+      </button>
+      <button class="btn btn--icon" type="button" aria-label="Team">
+        <img src="assets/icons/group.svg" alt="" aria-hidden="true" width="23" height="22">
+      </button>
+      <button class="btn btn--icon" type="button" aria-label="More options">
+        <img src="assets/icons/dots-horizontal.svg" alt="" aria-hidden="true" width="24" height="24">
+      </button>
+    </div>
+  </div>
+
+  <!-- ===================================================================
+       Wizard stepper (Figma 48966:64385): 6 steps, step 1 active.
+       Each step carries its underline element; CSS reveals it only for the
+       active step. Active step is marked aria-current="step".
+       =================================================================== -->
+  <ol class="wizard-stepper">
+    <li class="wizard-step" aria-current="step">
+      <span class="wizard-step__circle">1</span>
+      <span class="wizard-step__label">Codebase context</span>
+      <span class="wizard-step__underline" aria-hidden="true"></span>
+    </li>
+    <li class="wizard-step">
+      <span class="wizard-step__circle">2</span>
+      <span class="wizard-step__label">Tech spec</span>
+      <span class="wizard-step__underline" aria-hidden="true"></span>
+    </li>
+    <li class="wizard-step">
+      <span class="wizard-step__circle">3</span>
+      <span class="wizard-step__label">Build prompt</span>
+      <span class="wizard-step__underline" aria-hidden="true"></span>
+    </li>
+    <li class="wizard-step">
+      <span class="wizard-step__circle">4</span>
+      <span class="wizard-step__label">Agent action plan</span>
+      <span class="wizard-step__underline" aria-hidden="true"></span>
+    </li>
+    <li class="wizard-step">
+      <span class="wizard-step__circle">5</span>
+      <span class="wizard-step__label">Code</span>
+      <span class="wizard-step__underline" aria-hidden="true"></span>
+    </li>
+    <li class="wizard-step">
+      <span class="wizard-step__circle">6</span>
+      <span class="wizard-step__label">Project guide</span>
+      <span class="wizard-step__underline" aria-hidden="true"></span>
+    </li>
+  </ol>
+  </div><!-- /.card--band -->
+
+  <!-- ===================================================================
+       Card C — main-content card (Figma 48966:64434): white card wrapping the
+       section nav + main content, separated by the nav's right divider.
+       Fill #FFFFFF, 1px #E9E9E9, radius 8.
+       =================================================================== -->
+  <div class="card card--content">
+  <!-- ===================================================================
+       Content layout: section nav (aside) + main content.
+       =================================================================== -->
+  <div class="layout">
+    <!-- Section navigation (Figma 48966:64436): active item has the trailing check. -->
+    <aside>
+      <nav class="section-nav" aria-label="Codebase context sections">
+        <a class="section-nav__item" href="#connect-codebase" aria-current="page">
+          <span>Connect codebase</span>
+          <span class="section-nav__check">
+            <img src="assets/icons/nav-check.svg" alt="" aria-hidden="true" width="15" height="12">
+          </span>
+        </a>
+        <a class="section-nav__item" href="#environment-setup">
+          <span>Environment setup</span>
+        </a>
+        <a class="section-nav__item" href="#codebase-details">
+          <span>Codebase details</span>
+        </a>
+      </nav>
+    </aside>
+
+    <main>
+      <!-- Section heading block (Figma 48966:64448): heading + subtitle, 12px gap. -->
+      <div class="section-head" id="connect-codebase">
+        <h2 class="section-heading">Connect codebase</h2>
+        <p class="section-subtitle">Select a repository for indexing. Blitzy will use it to generate an accurate tech spec.</p>
+      </div>
+
+      <!-- Repository select (Figma 48966:64451): leading GitLab logo + label + trailing chevron. -->
+      <button class="select-control" type="button" aria-haspopup="listbox" aria-expanded="false">
+        <span class="select-control__icon">
+          <img src="assets/icons/gitlab.svg" alt="" aria-hidden="true" width="16" height="16">
+        </span>
+        <span class="select-control__label">GitLab Self-Managed</span>
+        <span class="select-control__icon">
+          <img src="assets/icons/chevron-down.svg" alt="" aria-hidden="true" width="24" height="24">
+        </span>
+      </button>
+
+      <!-- Branch-selector panel mount (Figma 48966:64459) — R1.
+           EMPTY on purpose: js/branch-selector.js renders the folder/repo
+           chain, action rows, branch rows, search, empty state and the
+           confirmation bar into this container at runtime. The polite live
+           region below is reused by the module to announce filter result and
+           appended-row counts to assistive technology. -->
+      <section id="branch-selector" class="branch-selector">
+        <div class="branch-selector__live" role="status" aria-live="polite" aria-atomic="true"></div>
+      </section>
+
+      <!-- In-column divider (Figma 48966:64688) — C4: 1px #D9D9D9 rule spanning the
+           content column. The 32px clearance above/below comes from main's 32px gap. -->
+      <hr class="content-divider">
+
+      <!-- Section heading block (Figma 48966:64689) — C3: "Environment setup" heading
+           + subtitle, 12px gap; same shared template as "Connect codebase". -->
+      <div class="section-head" id="environment-setup">
+        <h2 class="section-heading">Environment setup</h2>
+        <p class="section-subtitle">Choose from your saved environments so Blitzy can build and run your project. You can also create a new one if needed.</p>
+      </div>
+    </main>
+  </div>
+  </div><!-- /.card--content -->
+
+  <!-- ===================================================================
+       Scripts — classic (non-module) scripts in strict dependency order:
+       data.js (static seed) -> branch-selector.js (feature) -> app.js (bootstrap).
+       =================================================================== -->
+  <script src="js/data.js"></script>
+  <script src="js/branch-selector.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
