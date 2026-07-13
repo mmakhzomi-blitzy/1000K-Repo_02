@@ -110,11 +110,17 @@ export const treeData = [
   { id: 'design-system', type: 'folder', label: 'design-system', depth: 2, parentId: 'frontend', expanded: false },
   { id: 'shared-components', type: 'folder', label: 'shared-components', depth: 2, parentId: 'frontend', expanded: false },
 
-  // engineering › sibling folders (depth 1)
+  // engineering › sibling folder (depth 1)
   { id: 'qa', type: 'folder', label: 'qa', depth: 1, parentId: 'engineering', expanded: false },
-  { id: 'data-science', type: 'folder', label: 'data-science', depth: 1, parentId: 'engineering', expanded: false },
 
-  // Root folder (depth 0)
+  // Root folders (depth 0). `data-science` and `infrastructure` are TOP-LEVEL
+  // siblings of `platform`/`engineering` — Figma node 48966:71595 renders
+  // `data-science` with zero indent-spacers, left-aligned with `infrastructure`
+  // (depth 0), NOT nested under `engineering`. They are listed here, after the
+  // engineering subtree, so the flat depth-first array still matches the Figma
+  // visible row order (…, qa, data-science, infrastructure) while rendering at
+  // the root indent and staying visible when `engineering` collapses.
+  { id: 'data-science', type: 'folder', label: 'data-science', depth: 0, parentId: null, expanded: false },
   { id: 'infrastructure', type: 'folder', label: 'infrastructure', depth: 0, parentId: null, expanded: false },
 ];
 
