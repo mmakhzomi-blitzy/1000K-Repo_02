@@ -87,7 +87,12 @@
   // Behavioural defaults (overridable via init options).
   var DEFAULT_PAGE_SIZE = 6;   // branch rows appended per pagination step (R2)
   var DEFAULT_DEBOUNCE_MS = 300; // filter debounce window (R4; AAP §0.2.3)
-  var SCROLL_FALLBACK_THRESHOLD = 1; // px slack for the scroll-listener fallback
+  // Distance (px) from the absolute bottom of the scroll container within which
+  // the scroll listener treats the user as "at the bottom" and pumps the next
+  // page(s). Kept well below one page's height (~6 rows × ~32px ≈ 192px) so it
+  // stays quiet mid-list (letting the IntersectionObserver chunk normally) yet
+  // reliably catches a jump-to-bottom despite sub-pixel scroll rounding.
+  var NEAR_BOTTOM_MARGIN = 48; // px
 
   // Verbatim copy strings (reproduced exactly from Figma; do not reword).
   var EMPTY_MESSAGE = 'Branch not found';   // R5 (Figma text node 48966:70346)
@@ -621,10 +626,84 @@
   }
 
   /**
-   * Set up scroll-based pagination via an invisible bottom sentinel observed by
-   * an IntersectionObserver (root = the scroll container). Falls back to a
-   * native scroll listener where IntersectionObserver is unavailable. The
+   * True when the pagination sentinel is currently within the .branch-tree
+   * scroll viewport (any vertical overlap counts). Used by pumpPagination to
+   * decide whether more pages must be appended to push the sentinel out of view.
+   */
+  function isSentinelInView(state) {
+    if (!state.sentinel || !state.branchTree) {
+      return false;
+    }
+    var s = state.sentinel.getBoundingClientRect();
+    var c = state.branchTree.getBoundingClientRect();
+    return s.top < c.bottom && s.bottom > c.top;
+  }
+
+  /**
+   * Append pages until the sentinel is no longer within the scroll viewport, or
+   * every branch has been rendered. This is the scroll-triggered entry point
+   * (IntersectionObserver + scroll-listener fallback both call it).
+   *
+   * Why a loop and not a single appendBranchPage: the persistent sibling rows
+   * (admin-dash, design-system, …) render BELOW the sentinel, so at the very
+   * bottom of the panel the sentinel can remain visible AFTER a page is
+   * appended. An IntersectionObserver fires only on an intersection CHANGE, so
+   * on a single large scroll jump (dragging the scrollbar straight to the
+   * bottom, End key, or a programmatic scrollTop=scrollHeight) it would append
+   * exactly one page and then never re-trigger — stranding the remaining
+   * branches with no further scroll possible. Looping while the sentinel stays
+   * in view guarantees EVERY branch becomes reachable (R2: "append … until all
+   * are shown"), while still appending only ONE page for normal incremental
+   * wheel/trackpad scrolling (there each append pushes the sentinel below the
+   * small viewport, so the loop exits after a single page). The guard bounds the
+   * loop to the branch count so it can never spin; appendBranchPage tears down
+   * pagination (dropping the sentinel) once all rows are rendered, which also
+   * ends the loop. The appended count is announced ONCE, as an accurate total.
+   */
+  function pumpPagination(state) {
+    var totalAdded = 0;
+    var guard = state.branches.length + 1;
+    var added;
+    do {
+      added = appendBranchPage(state, false); // suppress per-page announce
+      totalAdded += added;
+    } while (
+      added > 0 &&
+      guard-- > 0 &&
+      state.renderedCount < state.branches.length &&
+      isSentinelInView(state)
+    );
+    if (totalAdded > 0) {
+      announce(state, 'Loaded ' + totalAdded + ' more branch' +
+        (totalAdded === 1 ? '' : 'es'));
+    }
+  }
+
+  /**
+   * Set up scroll-based pagination via an invisible bottom sentinel. The
    * sentinel is a zero-content, aria-hidden node — it renders nothing visible.
+   *
+   * TWO co-active triggers are attached (both call pumpPagination):
+   *   1. An IntersectionObserver (when available) observing the sentinel with
+   *      the scroll container as root — the smooth "primary" trigger that fires
+   *      as the sentinel scrolls into view during incremental wheel/trackpad
+   *      scrolling.
+   *   2. A native scroll listener that fires pumpPagination whenever the user is
+   *      within NEAR_BOTTOM_MARGIN of the absolute bottom.
+   *
+   * Both are attached TOGETHER (not either/or) because the observer alone is not
+   * sufficient: the persistent sibling rows sit BELOW the sentinel, so after a
+   * page is appended the sentinel can come to rest exactly at the viewport
+   * bottom edge. An IntersectionObserver reports intersection CHANGES only, and
+   * once its internal state for the sentinel is "intersecting" it will NOT
+   * re-fire on a subsequent jump-to-bottom (e.g. dragging the scrollbar to the
+   * end, the End key, or a programmatic scrollTop=scrollHeight) — which would
+   * strand the remaining branches at absolute max scroll with no recovery. The
+   * scroll listener closes that gap: a jump still emits a scroll event even when
+   * the observer's intersection state is stale, so the remaining pages load.
+   * Together they guarantee EVERY branch is reachable (R2), while the near-bottom
+   * gate keeps the listener quiet mid-list so normal incremental scrolling still
+   * appends one chunk at a time. teardownPagination() removes both + the sentinel.
    */
   function setupPagination(state) {
     if (state.renderedCount >= state.branches.length) {
@@ -642,25 +721,27 @@
     insertIntoBranchArea(state, sentinel);
     state.sentinel = sentinel;
 
+    // Trigger 1 — IntersectionObserver (smooth primary), when supported.
     if (typeof window.IntersectionObserver === 'function') {
       state.observer = new window.IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
           if (entries[i].isIntersecting) {
-            appendBranchPage(state, true);
+            pumpPagination(state);
             break;
           }
         }
       }, { root: state.branchTree, rootMargin: '0px', threshold: 0 });
       state.observer.observe(sentinel);
-    } else {
-      state.scrollHandler = function () {
-        var el = state.branchTree;
-        if (el.scrollTop + el.clientHeight >= el.scrollHeight - SCROLL_FALLBACK_THRESHOLD) {
-          appendBranchPage(state, true);
-        }
-      };
-      state.branchTree.addEventListener('scroll', state.scrollHandler);
     }
+
+    // Trigger 2 — native scroll listener (jump-to-bottom safety net), ALWAYS on.
+    state.scrollHandler = function () {
+      var el = state.branchTree;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - NEAR_BOTTOM_MARGIN) {
+        pumpPagination(state);
+      }
+    };
+    state.branchTree.addEventListener('scroll', state.scrollHandler);
   }
 
   /** Tear down pagination: disconnect observer / remove listener / drop sentinel. */
