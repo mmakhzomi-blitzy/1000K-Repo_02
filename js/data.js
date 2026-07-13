@@ -47,28 +47,53 @@
   });
 
   // Folder / repository hierarchy shown in the branch selector. Confirmed from
-  // Figma (screen 48966:64339): the tree is a FOREST of top-level folders whose
-  // initial (unscrolled) viewport renders these rows, top -> bottom:
-  //   platform            (folder, L0, COLLAPSED — reveals nothing)
-  //   engineering         (folder, L0, EXPANDED)
-  //   ├─ backend          (folder, L1, COLLAPSED — reveals nothing)
-  //   └─ frontend         (folder, L1, EXPANDED)
-  //      └─ web-app        (folder, L2, EXPANDED)
-  //         └─ customer-portal   (repo, L3, EXPANDED)
-  // `platform` (a top-level sibling of `engineering`) and `backend` (the FIRST
-  // child of `engineering`, before `frontend`) are rendered COLLAPSED: closed-
-  // folder icon + a non-rotated chevron, with no children revealed. Every other
-  // node is EXPANDED so the branch list under customer-portal is visible by
-  // default. Each node carries an explicit `expanded` flag consumed by
-  // js/branch-selector.js (renderChain) to choose the folder vs folder-open icon
-  // and the initial aria-expanded state.
+  // Figma (screens 48966:64339 initial, 48966:69650 filtered, 48966:70150 empty):
+  // the tree is a FOREST of 15 rows rendered top -> bottom:
+  //   platform                 (folder, L0, COLLAPSED — reveals nothing)
+  //   engineering              (folder, L0, EXPANDED)
+  //   ├─ backend               (folder, L1, COLLAPSED — reveals nothing)
+  //   ├─ frontend              (folder, L1, EXPANDED)
+  //   │  ├─ web-app            (folder, L2, EXPANDED)
+  //   │  │  ├─ customer-portal (repo,   L3, EXPANDED, branchHost)
+  //   │  │  │     └─ [New branch + Search action rows + branch list attach HERE]
+  //   │  │  └─ admin-dash      (repo,   L3, COLLAPSED)
+  //   │  ├─ design-system      (folder, L2, COLLAPSED)
+  //   │  └─ shared-components  (folder, L2, COLLAPSED)
+  //   └─ qa                    (folder, L1, COLLAPSED)
+  //   data-science             (folder, L0, COLLAPSED)
+  //   infrastructure           (folder, L0, COLLAPSED)
+  //
+  // CRITICAL (R1 — Figma 48966:69650 / 48966:70150): the sibling rows that come
+  // AFTER customer-portal in this forest (admin-dash, design-system,
+  // shared-components, qa, data-science, infrastructure) are PERSISTENT — they
+  // render below the branch region and must remain visible below the branch list,
+  // the filter result, or the "Branch not found" empty message. They are only
+  // ever hidden by the fixed 400px panel clip, NEVER by the search filter. This
+  // is why the forest is authored in full even though several nodes are collapsed
+  // and carry no children: their rows are required for visual fidelity.
+  //
+  // `platform`, `backend`, `admin-dash`, `design-system`, `shared-components`,
+  // `qa`, `data-science`, and `infrastructure` are rendered COLLAPSED: closed-
+  // folder / repo icon + a non-rotated chevron, with no children revealed. The
+  // `engineering`/`frontend`/`web-app` chain and the `customer-portal` repo are
+  // EXPANDED so the branch list is visible by default. Each node carries an
+  // explicit `expanded` flag consumed by js/branch-selector.js (renderChain /
+  // renderTreeNode) to choose the folder vs folder-open icon and the initial
+  // aria-expanded state.
+  //
+  // The `branchHost: true` flag marks the SINGLE repo node beneath which the
+  // action rows and branch list attach. js/branch-selector.js keys off this flag
+  // (not merely `type === 'repo'`) so the branch region injects under
+  // customer-portal ONLY — never under the sibling `admin-dash` repo — and so the
+  // persistent siblings render AFTER the branch region in document order.
   //
   // The repository's branches are NOT nested inside `tree`; they live in the
   // flat `branches` array above and are attached under the customer-portal repo
   // at render time by js/branch-selector.js. Folder/repo `path` values are
   // stable identifiers used only for collapse/expand tracking (they need not map
   // to any branch path). `tree` is an ARRAY of root nodes (a forest) because
-  // `platform` and `engineering` are siblings at depth 0.
+  // `platform`, `engineering`, `data-science`, and `infrastructure` are siblings
+  // at depth 0.
   var tree = [
     {
       type: 'folder', name: 'platform', path: 'platform',
@@ -91,14 +116,50 @@
               expanded: true,
               children: [
                 {
+                  // The branch-host repo: the "New branch"/"Search" action rows
+                  // and the paginated/filtered branch list attach directly beneath
+                  // THIS node (see branchHost note below). It stays EXPANDED so the
+                  // branch region is visible by default.
                   type: 'repo', name: 'customer-portal', path: REPO_PATH,
-                  expanded: true, children: []
+                  expanded: true, branchHost: true, children: []
+                },
+                {
+                  // Sibling repo of customer-portal (Figma 48966:70150 / 48966:69650
+                  // render it directly BELOW the branch region). COLLAPSED, no
+                  // children — reveals nothing, but must remain a persistent row so
+                  // it stays visible below the branch list / filter result / empty
+                  // message, per Figma.
+                  type: 'repo', name: 'admin-dash',
+                  path: 'engineering/frontend/web-app/admin-dash',
+                  expanded: false, children: []
                 }
               ]
+            },
+            {
+              type: 'folder', name: 'design-system',
+              path: 'engineering/frontend/design-system',
+              expanded: false, children: []
+            },
+            {
+              type: 'folder', name: 'shared-components',
+              path: 'engineering/frontend/shared-components',
+              expanded: false, children: []
             }
           ]
+        },
+        {
+          type: 'folder', name: 'qa', path: 'engineering/qa',
+          expanded: false, children: []
         }
       ]
+    },
+    {
+      type: 'folder', name: 'data-science', path: 'data-science',
+      expanded: false, children: []
+    },
+    {
+      type: 'folder', name: 'infrastructure', path: 'infrastructure',
+      expanded: false, children: []
     }
   ];
 

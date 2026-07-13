@@ -33,6 +33,11 @@
   --color-border-control: #D9D9D9;  /* control borders, panel border, dividers, inactive step outline */
   --color-text-primary: #333333;    /* branch/folder labels, path text, section-nav default */
   --color-text-strong: #000000;     /* typed search text, active step label, usage value, clear "×" */
+  /* BLITZY [A11Y] #999999 on the #FFFFFF surface computes to ~2.8:1, below the
+     WCAG AA 4.5:1 threshold for normal text. This value is retained deliberately
+     to match the Figma design contract EXACTLY (authoritative per AAP §0.3.2,
+     usage 10). Flagged for designer review — do NOT darken without a corresponding
+     Figma update, per the design-system precedence rule (Figma over WCAG). */
   --color-text-secondary: #999999;  /* placeholder, empty-state text, inactive step, git-branch icon, "/ total" */
   --color-icon-medium: #666666;     /* help / settings icons */
   --color-avatar-stroke: #D4CBFC;   /* 0.5px avatar ring */

@@ -300,6 +300,11 @@
     row.appendChild(icon);
 
     var input = makeEl('input', 'search-row__input', {
+      // id/name give the field a stable form-control identity (resolves the
+      // "form field should have an id or name attribute" advisory). The value is
+      // fixed because exactly one search input exists in the tree at a time.
+      id: 'branch-search',
+      name: 'branch-search',
       type: 'text',
       placeholder: SEARCH_LABEL,
       'aria-label': 'Search branches',
@@ -332,22 +337,51 @@
    * state.tree is normally an ARRAY of root nodes (a forest); a single root
    * object is also accepted and wrapped, so this stays robust to either shape.
    *
-   * Confirmed Figma forest (screen 48966:64339), rendered top -> bottom:
-   *   platform (L0, collapsed) · engineering (L0, expanded)
-   *     ├─ backend (L1, collapsed) · frontend (L1, expanded)
-   *     └─ web-app (L2, expanded) └─ customer-portal (repo, L3, expanded)
+   * Confirmed Figma forest (screens 48966:64339 / 48966:69650 / 48966:70150),
+   * rendered top -> bottom (15 rows):
+   *   platform (L0, collapsed)
+   *   engineering (L0, expanded)
+   *     ├─ backend (L1, collapsed)
+   *     ├─ frontend (L1, expanded)
+   *     │   ├─ web-app (L2, expanded)
+   *     │   │   ├─ customer-portal (repo, L3, expanded, branchHost)
+   *     │   │   │     └─ [New branch + Search + branch list inject HERE]
+   *     │   │   └─ admin-dash (repo, L3, collapsed)
+   *     │   ├─ design-system (L2, collapsed)
+   *     │   └─ shared-components (L2, collapsed)
+   *     └─ qa (L1, collapsed)
+   *   data-science (L0, collapsed)
+   *   infrastructure (L0, collapsed)
    *
-   * The customer-portal repo is the deepest/last node, so its depth is recorded
-   * as state.repoDepth and the action + branch rows attach one level deeper
-   * (repoDepth + 1) via appendChromeRows() / renderUnfilteredBranches().
+   * The branch-host repo (customer-portal) is NOT the last node — six sibling
+   * rows follow it. renderTreeNode() therefore injects the action + branch rows
+   * (via injectBranchRegion) the moment it renders the node carrying
+   * branchHost:true, so those siblings render AFTER the branch region and remain
+   * persistently visible below the branch list / filter result / empty message
+   * (R1). The host's depth is recorded as state.repoDepth and the branch rows
+   * attach one level deeper (repoDepth + 1). If no branchHost node exists, the
+   * region is attached at the end of the chain as a graceful fallback (below).
    */
   function renderChain(state) {
     var roots = Array.isArray(state.tree) ? state.tree : [state.tree];
-    state.repoDepth = 0; // fallback if the forest contains no repo node
+    state.repoDepth = 0;          // fallback if the forest contains no repo node
+    state.lastRepoDepth = null;   // deepest/last repo depth seen (fallback anchor)
+    state.branchHostRendered = false;
     for (var i = 0; i < roots.length; i++) {
       renderTreeNode(state, roots[i], 0);
     }
-    state.branchDepth = state.repoDepth + 1;
+    // Graceful-degradation fallback: if the seed declared NO branchHost repo, the
+    // branch region was never injected during the traversal, so attach it now at
+    // the end of the chain (matching the pre-restructure behaviour). With the
+    // confirmed seed this never runs — js/data.js marks customer-portal as
+    // branchHost, so injectBranchRegion() already fired mid-traversal, placing the
+    // action rows + anchor immediately beneath it and BEFORE the persistent
+    // sibling rows (R1 — Figma 48966:69650 / 48966:70150).
+    if (!state.branchHostRendered) {
+      state.repoDepth = (state.lastRepoDepth !== null) ? state.lastRepoDepth : 0;
+      state.branchDepth = state.repoDepth + 1;
+      injectBranchRegion(state);
+    }
   }
 
   /**
@@ -357,9 +391,12 @@
    * always rendered regardless of the node's expanded state — recomputeVisibility()
    * hides the descendants of any collapsed ancestor via their data-depth, so a
    * later expand reveals pre-existing rows without a re-render. In this seed the
-   * collapsed folders (platform, backend) carry no children, so they reveal
-   * nothing (Figma 48966:64339). The repo node's depth is captured in
-   * state.repoDepth so branch/action rows attach beneath it.
+   * collapsed nodes (platform, backend, admin-dash, design-system,
+   * shared-components, qa, data-science, infrastructure) carry no children, so
+   * they reveal nothing but remain persistent rows (Figma 48966:69650 /
+   * 48966:70150). The branch-host repo's depth is captured in state.repoDepth so
+   * branch/action rows attach beneath it, and injectBranchRegion() fires here the
+   * moment the branchHost node is rendered (see below).
    */
   function renderTreeNode(state, node, depth) {
     if (!node) {
@@ -383,8 +420,28 @@
       state.collapsed[node.path] = !expanded;
     }
 
+    // Track the depth of the last repo encountered so the malformed-data
+    // fallback in renderChain() can still attach the branch region sensibly.
     if (isRepo) {
-      state.repoDepth = depth; // branches/actions attach at repoDepth + 1
+      state.lastRepoDepth = depth;
+    }
+
+    // R1 (Figma 48966:69650 / 48966:70150): the branch region — the "New branch"
+    // and "Search" action rows, the paginated/filtered branch list, and the
+    // invisible branch-end anchor — attaches directly beneath the SINGLE
+    // branch-host repo. Inject it HERE, immediately after the repo's own row and
+    // BEFORE recursing into any children or returning to render this repo's
+    // siblings, so the persistent sibling rows that follow the host in the forest
+    // (admin-dash, design-system, shared-components, qa, data-science,
+    // infrastructure) render AFTER the branch region in document order and stay
+    // visible below the branch list / filter result / empty message. Keyed off
+    // the explicit `branchHost` flag (NOT `type === 'repo'`) so the region never
+    // attaches under the sibling admin-dash repo.
+    if (node.branchHost) {
+      state.repoDepth = depth;          // branches/actions attach at repoDepth + 1
+      state.branchDepth = depth + 1;
+      injectBranchRegion(state);
+      state.branchHostRendered = true;
     }
 
     var children = node.children;
@@ -417,10 +474,54 @@
     state.searchRowEl = searchRow;
   }
 
-  /** Remove every node after the search row (branch rows, empty state, sentinel). */
+  /**
+   * Inject the branch region beneath the branch-host repo: the "New branch" +
+   * "Search" action rows followed by an INVISIBLE, zero-height, aria-hidden
+   * "branch-end" anchor. Everything the branch list owns (paginated rows,
+   * filtered rows, the empty state, and the pagination sentinel) is later
+   * inserted BETWEEN the Search row and this anchor via insertIntoBranchArea(),
+   * so the persistent sibling rows that follow the host in the forest stay
+   * visible below the branch region (R1 — Figma 48966:69650 / 48966:70150).
+   *
+   * The anchor carries NO data-depth and is neither a .tree-row nor a
+   * .search-row, so recomputeVisibility() and getNavigableRows() both skip it —
+   * it never renders, never receives focus, and never participates in
+   * collapse/expand visibility. It exists purely as a stable DOM boundary.
+   */
+  function injectBranchRegion(state) {
+    appendChromeRows(state);
+    var anchor = makeEl('div', 'branch-tree__branch-end', { 'aria-hidden': 'true' });
+    anchor.style.cssText = 'height:0;width:100%;pointer-events:none;';
+    state.branchTree.appendChild(anchor);
+    state.branchEndAnchor = anchor;
+  }
+
+  /**
+   * Insert a node (single row, document fragment, sentinel, or empty state) into
+   * the branch region — i.e. immediately BEFORE the branch-end anchor, so it
+   * lands between the Search row and the persistent sibling rows that follow.
+   * Falls back to appendChild only when no anchor exists (the malformed-data
+   * fallback path where injectBranchRegion attached the chrome at the chain end).
+   */
+  function insertIntoBranchArea(state, node) {
+    if (state.branchEndAnchor && state.branchEndAnchor.parentNode === state.branchTree) {
+      state.branchTree.insertBefore(node, state.branchEndAnchor);
+    } else {
+      state.branchTree.appendChild(node);
+    }
+  }
+
+  /**
+   * Remove every node the branch list owns — the rows between the Search row and
+   * the branch-end anchor (branch rows, empty state, sentinel). The anchor itself
+   * and the persistent sibling rows that follow it are PRESERVED, so a filter /
+   * empty-state / unfiltered re-render never disturbs the sibling rows that must
+   * stay visible below the branch region (R1 — Figma 48966:69650 / 48966:70150).
+   */
   function clearBranchArea(state) {
+    var anchor = state.branchEndAnchor;
     var sibling = state.searchRowEl.nextSibling;
-    while (sibling) {
+    while (sibling && sibling !== anchor) {
       var toRemove = sibling;
       sibling = sibling.nextSibling;
       state.branchTree.removeChild(toRemove);
@@ -503,7 +604,7 @@
     if (state.sentinel && state.sentinel.parentNode === state.branchTree) {
       state.branchTree.insertBefore(fragment, state.sentinel);
     } else {
-      state.branchTree.appendChild(fragment);
+      insertIntoBranchArea(state, fragment); // before the branch-end anchor
     }
 
     var added = end - start;
@@ -534,7 +635,11 @@
     // Tag with branch depth so it hides alongside branches when the repo is
     // collapsed (keeps recomputeVisibility() consistent).
     setDepth(sentinel, state.branchDepth);
-    state.branchTree.appendChild(sentinel);
+    // Insert BEFORE the branch-end anchor so the sentinel stays inside the branch
+    // region (after the last branch row, before the persistent sibling rows).
+    // This keeps scroll pagination triggering on the branch list — not on the
+    // trailing siblings — exactly as before the restructure.
+    insertIntoBranchArea(state, sentinel);
     state.sentinel = sentinel;
 
     if (typeof window.IntersectionObserver === 'function') {
@@ -590,7 +695,7 @@
     for (var i = 0; i < list.length; i++) {
       fragment.appendChild(createBranchRow(state, list[i]));
     }
-    state.branchTree.appendChild(fragment);
+    insertIntoBranchArea(state, fragment); // before the branch-end anchor
     recomputeVisibility(state);
     ensureRovingTarget(state);
   }
@@ -602,7 +707,7 @@
     var empty = makeEl('div', 'empty-state');
     setDepth(empty, state.branchDepth);
     empty.textContent = EMPTY_MESSAGE;
-    state.branchTree.appendChild(empty);
+    insertIntoBranchArea(state, empty); // before the branch-end anchor
     recomputeVisibility(state);
     ensureRovingTarget(state);
   }
@@ -960,6 +1065,63 @@
     focusRow(state, edge === 'first' ? rows[0] : rows[rows.length - 1]);
   }
 
+  /**
+   * The first visible child row of an expanded folder/repo, or null. In the
+   * pre-order DFS row list the first child of a node is the immediately
+   * following navigable row whose depth is exactly one greater. Used by
+   * ArrowRight on an already-open node (ARIA tree pattern).
+   */
+  function firstChildRow(state, row) {
+    var rows = getNavigableRows(state);
+    var idx = rows.indexOf(row);
+    if (idx === -1) {
+      return null;
+    }
+    var depthAttr = row.getAttribute('data-depth');
+    if (depthAttr === null) {
+      return null;
+    }
+    var depth = parseInt(depthAttr, 10);
+    var next = rows[idx + 1];
+    if (!next) {
+      return null;
+    }
+    var nextDepthAttr = next.getAttribute('data-depth');
+    if (nextDepthAttr !== null && parseInt(nextDepthAttr, 10) === depth + 1) {
+      return next;
+    }
+    return null;
+  }
+
+  /**
+   * The parent row of a given row, or null for a root row. The parent is the
+   * nearest preceding visible row at a shallower depth (correct for a properly
+   * nested pre-order tree). Used by ArrowLeft on a leaf/closed node (ARIA tree
+   * pattern).
+   */
+  function parentRow(state, row) {
+    var rows = getNavigableRows(state);
+    var idx = rows.indexOf(row);
+    if (idx === -1) {
+      return null;
+    }
+    var depthAttr = row.getAttribute('data-depth');
+    if (depthAttr === null) {
+      return null;
+    }
+    var depth = parseInt(depthAttr, 10);
+    for (var i = idx - 1; i >= 0; i--) {
+      var dAttr = rows[i].getAttribute('data-depth');
+      if (dAttr === null) {
+        continue;
+      }
+      if (parseInt(dAttr, 10) < depth) {
+        return rows[i];
+      }
+    }
+    return null;
+  }
+
   /** Keydown handler (delegated on the tree). Implements the ARIA tree pattern. */
   function onKeydown(state, event) {
     var target = event.target;
@@ -1010,6 +1172,37 @@
     } else if (key === 'End') {
       event.preventDefault();
       moveFocusEdge(state, 'last');
+    } else if (key === 'ArrowRight') {
+      // ARIA tree pattern: on a CLOSED expandable node, open it (focus stays);
+      // on an already-OPEN node, move focus to its first child; on a leaf
+      // (branch / action / search rows carry no aria-expanded), do nothing.
+      var expandedR = row.getAttribute('aria-expanded');
+      if (expandedR !== null) {
+        event.preventDefault();
+        if (expandedR === 'false') {
+          toggleExpand(state, row);
+        } else {
+          var child = firstChildRow(state, row);
+          if (child) {
+            focusRow(state, child);
+          }
+        }
+      }
+    } else if (key === 'ArrowLeft') {
+      // ARIA tree pattern: on an OPEN expandable node, close it (focus stays);
+      // otherwise (closed node or leaf) move focus to the parent node. A root
+      // leaf/closed node has no parent, so focus does not move.
+      var expandedL = row.getAttribute('aria-expanded');
+      if (expandedL === 'true') {
+        event.preventDefault();
+        toggleExpand(state, row);
+      } else {
+        var parent = parentRow(state, row);
+        if (parent) {
+          event.preventDefault();
+          focusRow(state, parent);
+        }
+      }
     } else if (key === 'Enter' || key === ' ' || key === 'Spacebar') {
       event.preventDefault();
       activateRow(state, row);
@@ -1150,6 +1343,9 @@
       confirmationBarPath: null,
       repoDepth: 0,
       branchDepth: 4,
+      lastRepoDepth: null,       // deepest/last repo depth seen (fallback anchor)
+      branchHostRendered: false, // set once the branch-host repo injects the region
+      branchEndAnchor: null,     // invisible DOM boundary after the branch region
       observer: null,
       scrollHandler: null,
       sentinel: null,
@@ -1169,8 +1365,13 @@
     state.branchTree = tree;
     container.appendChild(tree);
 
-    renderChain(state);          // R1 — folder/repo chain
-    appendChromeRows(state);     // R1 — New branch + Search action rows
+    // renderChain renders the folder/repo forest AND injects the branch region
+    // (New branch + Search action rows + the invisible branch-end anchor) directly
+    // beneath the branch-host repo mid-traversal, so the persistent sibling rows
+    // that follow the host render AFTER the branch region (R1 — Figma 48966:69650
+    // / 48966:70150). renderUnfilteredBranches then inserts the initial paginated
+    // branch list BEFORE the anchor.
+    renderChain(state);              // R1 — forest + injected branch region
     renderUnfilteredBranches(state); // R1/R2 — initial paginated branch list
 
     // Delegated interaction handlers. Keep NAMED references on `state` so

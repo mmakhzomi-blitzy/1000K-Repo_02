@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Connect codebase · Blitzy Platform 2.0</title>
+  <!-- SEO: concise page summary for search engines / link previews. Describes the
+       "Connect codebase" wizard step and its repository branch selector. -->
+  <meta name="description" content="Connect a repository to Blitzy Platform 2.0 and select a branch to index. Browse, paginate, and search your codebase branches to generate an accurate tech spec.">
+
 
   <!-- No-op favicon: the design defines no favicon asset, so this empty data URI
        suppresses the browser's automatic /favicon.ico request and keeps the
@@ -74,8 +78,11 @@
 
       <!-- Account (48966:64361): avatar + name/plan text stack + trailing chevron.
            C2 — a focusable <button> with an accessible name (was a non-focusable
-           <div>). The avatar is decorative here since aria-label names the control. -->
-      <button class="account" type="button" aria-label="Account">
+           <div>). The avatar is decorative here since aria-label names the control.
+           WCAG 2.5.3 (Label in Name): the accessible name INCLUDES the visible
+           text ("{User}", "{Short plan}") so speech-input users can target the
+           control by its visible label; the "Account" prefix supplies role context. -->
+      <button class="account" type="button" aria-label="Account: {User}, {Short plan}">
         <span class="avatar">
           <img src="assets/images/profile-picture.png" alt="" aria-hidden="true" width="32" height="32">
         </span>
