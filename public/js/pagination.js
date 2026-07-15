@@ -265,7 +265,14 @@ export function loadNextBranchPage(state) {
   if (!s) return false;
 
   // Suspend while searching — the match set is shown in full, not paginated.
-  if (isSearching(s)) return false;
+  // Guard on BOTH the applied query AND `searchActive` (P12-FIND-13): opening
+  // Search sets `state.searchActive = true` SYNCHRONOUSLY, but `state.query` is
+  // only updated ~150 ms later by the debounced `applyFilter`. Without the
+  // `searchActive` check, activating the keyboard "Load more" fallback inside
+  // that debounce window would advance pagination (4 -> 16) even though Search
+  // is already open, and those extra rows would then be restored on dismissal.
+  // Checking `searchActive` suspends pagination the instant Search is activated.
+  if (isSearching(s) || s.searchActive === true) return false;
 
   // Re-entrancy guard against rapid, overlapping intersection callbacks.
   if (loading) return false;
@@ -351,6 +358,27 @@ function disconnectObserver() {
     observer.disconnect();
     observer = null;
   }
+}
+
+/**
+ * Whether a CONSTRUCTIBLE `IntersectionObserver` is available in this
+ * environment (P12-FIND-11). Some environments lack it — older browsers, a
+ * hardened/isolated test context, or a deliberately stubbed
+ * `window.IntersectionObserver = undefined`. Calling `new IntersectionObserver`
+ * when it is absent throws `TypeError: IntersectionObserver is not a
+ * constructor`, which — because {@link initPagination} runs early in app.js
+ * `init()` — would abort the whole boot sequence BEFORE `initSearch`, leaving
+ * search unwired (the affordance only receives focus and never opens). Guarding
+ * the constructor lets {@link initPagination} fall back to the keyboard "Load
+ * more" control instead, so app initialization completes and every other
+ * feature (search, selection) is still wired. `typeof … === 'function'` is the
+ * canonical constructible-ness check and is safe even when the global is
+ * `undefined` (no ReferenceError under `typeof`).
+ *
+ * @returns {boolean} True only when `IntersectionObserver` can be constructed.
+ */
+function hasIntersectionObserver() {
+  return typeof IntersectionObserver === 'function';
 }
 
 /**
@@ -545,9 +573,12 @@ export function initPagination(state, options = {}) {
   const container = getTreeList();
   const sentinel = getSentinel();
 
-  // Defensive: without the root/sentinel we cannot observe. The keyboard
-  // fallback remains functional for advancing pagination.
-  if (exhausted || !container || !sentinel) {
+  // Defensive: without the root/sentinel — OR without a constructible
+  // IntersectionObserver (P12-FIND-11) — we cannot observe. Return the
+  // fallback-only controller so app.js init continues (search stays wired); the
+  // keyboard "Load more" control remains fully functional for advancing
+  // pagination without an observer.
+  if (exhausted || !container || !sentinel || !hasIntersectionObserver()) {
     return createController();
   }
 

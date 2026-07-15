@@ -106,12 +106,29 @@ const state = {
  * bottom of the module).
  */
 function init() {
+  // Forward reference to the search handle (initialised at step 5). The tree's
+  // folder `onToggle` (wired below) notifies search so a collapse can cancel a
+  // pending filter — folder toggles only happen on user interaction, long after
+  // init() returns, by which point `search` is assigned (no TDZ at call time).
+  let search = null;
+
   // 1) Scaffold: folders / repositories / the "New branch" action row rendered
   //    into #tree-list, respecting `state.expanded`. Folder expand/collapse is
   //    fully owned by tree.js's delegated listeners, and its internal
   //    reconciliation re-applies the current selection and restores the branch
-  //    rows on re-expand, so no `onToggle` handler is required here.
-  renderTree(state);
+  //    rows on re-expand.
+  //
+  //    onToggle (P12-FIND-12): when a folder is toggled, notify search so that
+  //    collapsing the active repository (or ANY ancestor of it) cancels a still-
+  //    pending debounced filter BEFORE it can insert an orphan branch row under
+  //    the now-collapsed subtree. tree.js persists these handlers for every
+  //    subsequent toggle, so passing them once here is sufficient; the callback
+  //    is a strict no-op while search is closed or the area is still live.
+  renderTree(state, {
+    onToggle: () => {
+      if (search) search.cancelPendingFilterIfHidden();
+    },
+  });
 
   // 2) Initial branch page: the first `loadedBranchCount` branches of the
   //    active repository, rendered as plain rows (no highlight) immediately
@@ -140,7 +157,7 @@ function init() {
   //    (renderBranchRows), restoreList (the current paginated slice), and
   //    announce (#search-status) intentionally use search.js's own correct
   //    defaults, keeping this orchestrator free of duplicated feature logic.
-  const search = initSearch(state, {
+  search = initSearch(state, {
     pausePagination: () => pager.pause(),
     resumePagination: () => pager.resume(state),
   });

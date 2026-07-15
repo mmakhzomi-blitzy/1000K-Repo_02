@@ -52,19 +52,21 @@
         aria-expanded. Keyboard follows the Tree pattern (single tab stop + roving
         tabindex; Arrow/Home/End move focus — see js/tree.js).
 
-        ARIA ownership reconciliation (F-08): the non-treeitem nodes that share this
-        container — the search input row, the empty-state message, and the pagination
-        sentinel — are marked role="none" so they are removed from the tree's owned
-        item structure (they are non-focusable, so role="none" is honoured). The
-        resting "Search" affordance is a genuine, Figma-mandated interactive row that
-        must remain a real <button>: it is a single Tab stop that opens the inline
-        input on Enter/Space. It therefore stays a <button> — role="none" is ignored
-        by user agents on focusable elements, and converting it to a treeitem would
-        pull it into the roving-tabindex set (changing Tab→Arrow reachability) and,
-        because it carries aria-expanded, would make the Tree keydown handler
-        preventDefault Enter/Space and suppress opening the search. Both would break
-        the "preserve exact flat visual order and keyboard behavior" constraint, so
-        the affordance's <button> semantics are retained deliberately.
+        ARIA ownership reconciliation (F-08 / P4-FIND-3): the non-treeitem nodes that
+        share this container — the search input row, the empty-state message, and the
+        pagination sentinel — are marked role="none" so they are removed from the
+        tree's owned item structure (they are non-focusable, so role="none" is
+        honoured). The resting "Search" affordance is a genuine, Figma-mandated
+        interactive row; to keep the tree's owned children ARIA-valid
+        (aria-required-children — a <button> is not an allowed direct child of
+        role="tree"), it is authored as a LEAF role="treeitem" (data-type="action",
+        aria-level="5", tabindex="-1" so it joins the single roving-tabindex set),
+        mirroring the "New branch" action row. It carries NO aria-expanded (it
+        discloses the inline input via aria-controls, not an owned subtree), so the
+        Tree keydown handler does NOT treat it as an expandable folder. Enter/Space
+        and click activate it (js/tree.js routes Enter/Space on an aria-controls
+        action row to its click handler; js/search.js opens the inline input),
+        preserving the exact flat visual order and keyboard-open behavior.
       -->
       <div class="branch-tree__list" id="tree-list" role="tree" aria-label="Codebase branches">
 
@@ -80,10 +82,10 @@
           aria-controls points at the input row it toggles. Transparent by
           default; hover paints the full-width lavender band (css/branch-list.css).
         -->
-        <button type="button" class="search-affordance" id="search-affordance" data-depth="4" aria-expanded="false" aria-controls="search-input-row">
+        <div class="search-affordance" id="search-affordance" role="treeitem" data-id="search-affordance" data-type="action" data-depth="4" aria-level="5" tabindex="-1" aria-controls="search-input-row">
           <img class="branch-tree__icon" src="assets/icons/icon_search.svg" alt="" aria-hidden="true" width="24" height="24">
           <span class="search-affordance__label">Search</span>
-        </button>
+        </div>
 
         <!--
           SearchInputRow (Figma 48966:72061 / 48966:70647) — the inline, box-less

@@ -49,7 +49,7 @@
  */
 
 import { getBranches, ACTIVE_REPO_ID } from './data.js';
-import { renderBranchRows, focusBranchRow } from './tree.js';
+import { renderBranchRows, focusBranchRow, focusFirstBranchRow } from './tree.js';
 
 /* ============================================================================
  * Constants — DOM hooks, timing, and verbatim content strings. The ids/classes
@@ -68,6 +68,12 @@ const SEARCH_CLEAR_CLASS = 'search-clear';
 const EMPTY_STATE_ID = 'empty-state';
 /** Id of the visually-hidden `aria-live="polite"` results region. */
 const SEARCH_STATUS_ID = 'search-status';
+/**
+ * Id of the scrollable tree/branch list (the structural root). Used to test
+ * whether the active repository's branch area is currently "live" — visible and
+ * expanded — before rendering any filtered/resting rows into it (P12-FIND-12).
+ */
+const TREE_LIST_ID = 'tree-list';
 
 /**
  * Debounce interval (ms) for the filter — responsive to typing yet coalesces
@@ -164,6 +170,48 @@ function getClearButton(inputRow) {
   return row ? row.querySelector('.' + SEARCH_CLEAR_CLASS) : null;
 }
 
+/** @returns {HTMLElement|null} The scrollable tree/branch list root. */
+function getTreeList() {
+  return document.getElementById(TREE_LIST_ID);
+}
+
+/**
+ * Whether the active repository's branch area is currently "live" — i.e. its
+ * `treeitem` is rendered inside #tree-list AND expanded, so branch rows rendered
+ * now would attach beneath a visible, open repository.
+ *
+ * This mirrors the equivalent self-guard in pagination.js and is the core of the
+ * P12-FIND-12 fix. Collapsing the active repo — or ANY ancestor folder of it
+ * (engineering / frontend / web-app) — makes tree.js remove the repo's branch
+ * rows and (for an ancestor) drop the repo's `treeitem` from the DOM entirely.
+ * A debounced search filter that RESOLVES AFTER such a collapse must not render:
+ * doing so would insert an orphan branch row beneath the collapsed subtree
+ * (a selectable depth-5 row hanging under a collapsed depth-2 folder), corrupt
+ * the tree, and desynchronise selection/footer state. Gating every render path
+ * (`applyFilter`, the default `restoreList`) on this predicate — plus cancelling
+ * the pending debounce on collapse via {@link initSearch}'s
+ * `cancelPendingFilterIfHidden` — makes filtered rendering impossible unless the
+ * active repo is actually on screen and open.
+ *
+ * The lookup compares `dataset.id` (injection-proof; no selector escaping) and
+ * tolerates a missing #tree-list (test harnesses / partial DOM).
+ *
+ * @param {object} state Shared UI state.
+ * @returns {boolean} True only when the active repo row is present and expanded.
+ */
+function isActiveRepoBranchAreaLive(state) {
+  const treeList = getTreeList();
+  if (!treeList) return false;
+  const repoId = (state && state.activeRepoId) || ACTIVE_REPO_ID;
+  const rows = treeList.querySelectorAll('[role="treeitem"][data-id]');
+  for (const row of rows) {
+    if (row.dataset.id === repoId) {
+      return row.getAttribute('aria-expanded') === 'true';
+    }
+  }
+  return false;
+}
+
 /* ============================================================================
  * State — search.js reads/writes `query` and `searchActive` and reads
  * `activeRepoId` / `loadedBranchCount` on the SINGLE shared UI state object
@@ -237,7 +285,14 @@ function isTreeTarget(el) {
  */
 function inertHandle() {
   const noop = () => {};
-  return { open: noop, close: noop, applyFilter: noop, isActive: () => false, destroy: noop };
+  return {
+    open: noop,
+    close: noop,
+    applyFilter: noop,
+    isActive: () => false,
+    cancelPendingFilterIfHidden: noop,
+    destroy: noop,
+  };
 }
 
 /* ============================================================================
@@ -289,7 +344,15 @@ export function initSearch(state, deps) {
   // rendering-ownership model. app.js may inject a richer restore (R7).
   const restoreList = typeof d.restoreList === 'function'
     ? d.restoreList
-    : () => renderMatches(restingBranches(uiState));
+    : () => {
+      // P12-FIND-12: never restore branch rows into a non-live branch area
+      // (collapsed active repo / ancestor). Restoring the resting slice while
+      // the subtree is collapsed would inject orphan rows beneath it. tree.js
+      // re-establishes the branch rows from its own preserved cache on
+      // re-expand (syncBranchArea), so skipping here loses nothing.
+      if (!isActiveRepoBranchAreaLive(uiState)) return;
+      renderMatches(restingBranches(uiState));
+    };
   const pausePagination = typeof d.pausePagination === 'function' ? d.pausePagination : () => {};
   const resumePagination = typeof d.resumePagination === 'function' ? d.resumePagination : () => {};
   const announce = typeof d.announce === 'function'
@@ -348,6 +411,18 @@ export function initSearch(state, deps) {
    * @param {string} rawValue The raw (un-trimmed) input value.
    */
   function applyFilter(rawValue) {
+    // P12-FIND-12 (defensive last line): never render into the branch area when
+    // the active repository's branch region is not live — i.e. its row is absent
+    // or its subtree/an ancestor is collapsed. A debounced filter that resolves
+    // AFTER the user collapsed an ancestor must NOT insert an orphan branch row
+    // (or an orphan resting slice, for an empty query) beneath the collapsed
+    // subtree. The pending debounce is normally already dropped by
+    // `cancelPendingFilterIfHidden` (wired to tree.js's folder onToggle); this
+    // guard guarantees filtered rendering is impossible when not live even if a
+    // call slips through. Bail WITHOUT mutating `query`, so state stays coherent
+    // with the (unchanged) rendered rows and a later re-expand restores cleanly.
+    if (!isActiveRepoBranchAreaLive(uiState)) return;
+
     const raw = rawValue == null ? '' : String(rawValue);
     uiState.query = raw;
 
@@ -401,6 +476,31 @@ export function initSearch(state, deps) {
     }
   }
 
+  /**
+   * P12-FIND-12 — drop a still-pending debounced filter when the active
+   * repository's branch area is no longer live while search is open.
+   *
+   * app.js wires this to tree.js's folder `onToggle` (see {@link module:app}),
+   * so collapsing the active repo — or ANY ancestor of it — DURING the ~150 ms
+   * debounce window cancels the queued filter before it can fire. Without this,
+   * the delayed `applyFilter('dev')` would run after the collapse and render a
+   * selectable branch row beneath the now-collapsed subtree (an orphan depth-5
+   * row under a collapsed depth-2 folder), which the user could then click to
+   * corrupt selection/footer state.
+   *
+   * Deliberately a STRICT no-op unless search is open AND the area is not live:
+   *  - it never fires while the area is still live (ordinary typing/collapsing an
+   *    UNRELATED folder leaves a live filter untouched); and
+   *  - it never mutates `searchActive`/`query`, so a search that survives a
+   *    collapse/re-expand (a settled query, Figma edge case) restores coherently
+   *    from tree.js's preserved branch cache.
+   */
+  function cancelPendingFilterIfHidden() {
+    if (!uiState.searchActive) return;
+    if (isActiveRepoBranchAreaLive(uiState)) return;
+    debouncedFilter.cancel();
+  }
+
   /* ---- activation / dismissal (R3 / W3, R7 / W5) ----------------------- */
 
   /** Open search: transform the affordance IN PLACE into the input and focus it. */
@@ -414,8 +514,10 @@ export function initSearch(state, deps) {
 
     // Toggle visibility via the `hidden` attribute only (no inline styles). The
     // input occupies the same tree position/indent as the affordance (index.html/CSS).
+    // The affordance is a leaf role="treeitem" (P4-FIND-3) with NO aria-expanded —
+    // it discloses the input row via aria-controls, not an owned subtree. Hiding it
+    // also drops it from the roving set (getTreeItems filters out [hidden] rows).
     affordance.setAttribute('hidden', '');
-    affordance.setAttribute('aria-expanded', 'true');
     inputRow.removeAttribute('hidden');
     input.value = '';
 
@@ -445,10 +547,31 @@ export function initSearch(state, deps) {
   function close(options) {
     if (!uiState.searchActive) return; // idempotent
 
-    // Flip state FIRST so the synchronous blur that follows hiding the input is
-    // a no-op (onInputBlur guards on `searchActive`), and any deferred blur-close
-    // timer that fires later also short-circuits. Drop the pending debounce and
-    // any queued blur dismissal so neither fires against the restored list.
+    // P4-FIND-1: when a branch SELECTION drives the dismissal, ensure the
+    // selected branch is INSIDE the restored paginated slice. Search can reveal
+    // and select a branch BEYOND the current slice (e.g. 'dev' at index 22 while
+    // only branch-1..4 are loaded). Without this, restoreList() renders only the
+    // resting slice, so the just-selected row is ABSENT from the DOM — its
+    // lavender highlight invisible and keyboard focus falling to the affordance —
+    // even though the confirmation footer shows its full path (the incoherence
+    // this finding reports). Advancing `loadedBranchCount` to include it (the
+    // single source of truth pagination also reads) makes restoreList() render,
+    // highlight (createRow re-applies the selected state from
+    // `uiState.selectedBranchId`), and focus the selected row coherently, while
+    // pagination resumes correctly from the new count.
+    const focusBranchId = options && options.focusBranchId;
+    if (focusBranchId) {
+      const allBranches = getBranches(uiState.activeRepoId) || [];
+      const selectedIdx = allBranches.findIndex((b) => b && b.id === focusBranchId);
+      if (selectedIdx >= 0 && selectedIdx >= getLoadedCount(uiState)) {
+        uiState.loadedBranchCount = selectedIdx + 1;
+      }
+    }
+
+    // Flip state FIRST so the synchronous focusout that follows hiding the input
+    // is a no-op (onRowFocusOut guards on `searchActive`), and any deferred
+    // focusout-close timer that fires later also short-circuits. Drop the pending
+    // debounce and any queued dismissal so neither fires against the restored list.
     uiState.searchActive = false;
     uiState.query = '';
     debouncedFilter.cancel();
@@ -456,10 +579,10 @@ export function initSearch(state, deps) {
 
     // Reset and hide the input; restore the transparent affordance row. Clearing
     // the value leaves no residual query or caret; hiding removes the clear-× (R7).
+    // The affordance is a leaf role="treeitem" (P4-FIND-3) — no aria-expanded state.
     input.value = '';
     inputRow.setAttribute('hidden', '');
     affordance.removeAttribute('hidden');
-    affordance.setAttribute('aria-expanded', 'false');
     showEmptyState(false);
 
     // Restore EXACTLY the current paginated slice, THEN re-establish a single
@@ -470,11 +593,12 @@ export function initSearch(state, deps) {
     announce('');
 
     // F-05: restore keyboard focus ONLY when a branch selection drove the
-    // dismissal (a `focusBranchId` intent). The pre-close focus was on the
-    // filtered row that `restoreList()` just replaced; without this, focus
-    // would fall to <body>. `createRow` re-applied the selected highlight from
-    // state during restore, so the target row is both highlighted and focused.
-    const focusBranchId = options && options.focusBranchId;
+    // dismissal (a `focusBranchId` intent, resolved above). The pre-close focus
+    // was on the filtered row that `restoreList()` just replaced; without this,
+    // focus would fall to <body>. `createRow` re-applied the selected highlight
+    // from state during restore, so the target row is both highlighted and
+    // focused — and thanks to the loadedBranchCount advancement above, an
+    // out-of-slice selection is now guaranteed to be present in the restored DOM.
     if (focusBranchId && !focusBranchRow(focusBranchId)) {
       // The selected branch is outside the restored paginated slice — fall back
       // to a deliberate, always-present stable target (the restored affordance).
@@ -501,31 +625,54 @@ export function initSearch(state, deps) {
       event.preventDefault(); // suppress the UA's native search-field clear
       close();
       affordance.focus();
+      return;
+    }
+    // P7-FIND-9: ArrowDown steps INTO the filtered results. Matches render as
+    // ordinary treeitems carrying the roving `tabindex="-1"`, so they are
+    // otherwise keyboard-unreachable from the input (Tab would skip to the
+    // clear-× / "Load more"). Moving focus to the first result hands off to
+    // tree.js roving navigation (ArrowUp/Down/Home/End) and selection.js's
+    // Enter/Space activation, making a filtered branch — INCLUDING one paginated
+    // out of the initial slice — fully keyboard-selectable (this complements the
+    // P4-FIND-1 restore-slice fix in close()). preventDefault ONLY when focus
+    // actually moved, so an ArrowDown with no results leaves the caret alone.
+    if (event.key === 'ArrowDown') {
+      if (focusFirstBranchRow()) event.preventDefault();
     }
   }
 
   /**
-   * Blur dismisses ONLY when the field is empty (never fight the user mid-query).
+   * Focus leaving the search input ROW dismisses search ONLY when the field is
+   * empty (never fight the user mid-query). The listener is bound to the ROW via
+   * `focusout` (which BUBBLES, unlike `blur`), so we observe focus leaving ANY
+   * element in the row — the input OR the clear-×. This closes the gap where a
+   * Tab sequence input → clear-× → next-control left an empty field open, because
+   * the final hop was a blur on the clear button (not the input) that a
+   * blur-on-input listener never saw (Finding P4-FIND-2). Focus moves WITHIN the
+   * row (input ↔ clear-×) remain exempt.
+   *
    * To avoid racing a branch click — whose event order is
-   * `mousedown → blur → mouseup → click` — a synchronous close() would re-render
-   * and DISCONNECT the target row before its click fires (Finding #3). So the
+   * `mousedown → focusout → mouseup → click` — a synchronous close() would
+   * re-render and DISCONNECT the target row before its click fires. So the
    * dismissal is:
-   *   (a) SKIPPED when focus moves to the clear-× (its own handler owns it) or to
-   *       a branch/tree target (branch selection / Figma W6 owns the flow), and
+   *   (a) SKIPPED when focus moves WITHIN the row (input ↔ clear-×, whose own
+   *       handler owns it) or to a branch/tree target (branch selection / Figma
+   *       W6 owns the flow), and
    *   (b) otherwise DEFERRED to a macrotask, so any in-flight pointer interaction
    *       completes on still-connected rows before we re-render — then re-checked
-   *       at fire time in case state changed during the interaction.
-   * Escape and the clear-× remain the deterministic, immediate dismissals (R7).
-   * Focus is never stolen — the user chose to click elsewhere.
+   *       at fire time (including whether focus returned to ANY element in the
+   *       row) in case state changed during the interaction.
+   * Escape and the clear-× click remain the deterministic, immediate dismissals
+   * (R7). Focus is never stolen — the user chose to move focus away.
    * @param {FocusEvent} event
    */
-  function onInputBlur(event) {
+  function onRowFocusOut(event) {
     if (!uiState.searchActive) return;
     if (input.value.trim() !== '') return;
 
     // `relatedTarget` is the element gaining focus (an Element, or null).
     const next = event.relatedTarget;
-    // The clear-× button inside the input row owns its own dismissal.
+    // Focus moving WITHIN the row (input ↔ clear-×) is not a dismissal.
     if (next && inputRow.contains(next)) return;
     // Exempt a branch/tree target: the click selecting a branch owns the flow.
     if (isTreeTarget(next)) return;
@@ -535,9 +682,9 @@ export function initSearch(state, deps) {
     blurCloseTimer = setTimeout(() => {
       blurCloseTimer = null;
       // Re-check at fire time: the interaction may have changed state.
-      if (!uiState.searchActive) return;             // already dismissed elsewhere
-      if (input.value.trim() !== '') return;         // user resumed typing
-      if (document.activeElement === input) return;  // focus returned to the input
+      if (!uiState.searchActive) return;                    // already dismissed elsewhere
+      if (input.value.trim() !== '') return;                // user resumed typing
+      if (inputRow.contains(document.activeElement)) return; // focus returned into the row
       close();
     }, 0);
   }
@@ -553,7 +700,9 @@ export function initSearch(state, deps) {
   affordance.addEventListener('click', onAffordanceClick);
   input.addEventListener('input', onInput);
   input.addEventListener('keydown', onInputKeydown);
-  input.addEventListener('blur', onInputBlur);
+  // `focusout` on the ROW (bubbles) so focus leaving the input OR the clear-×
+  // is observed — the empty-field Tab-out dismissal (P4-FIND-2).
+  inputRow.addEventListener('focusout', onRowFocusOut);
   if (clearButton) clearButton.addEventListener('click', onClearClick);
 
   /* ---- teardown -------------------------------------------------------- */
@@ -565,7 +714,7 @@ export function initSearch(state, deps) {
     affordance.removeEventListener('click', onAffordanceClick);
     input.removeEventListener('input', onInput);
     input.removeEventListener('keydown', onInputKeydown);
-    input.removeEventListener('blur', onInputBlur);
+    inputRow.removeEventListener('focusout', onRowFocusOut);
     if (clearButton) clearButton.removeEventListener('click', onClearClick);
   }
 
@@ -574,6 +723,7 @@ export function initSearch(state, deps) {
     close,
     applyFilter,
     isActive: () => uiState.searchActive === true,
+    cancelPendingFilterIfHidden,
     destroy,
   };
 }

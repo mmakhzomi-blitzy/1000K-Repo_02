@@ -685,6 +685,30 @@ export function focusBranchRow(branchId) {
   return document.activeElement === row;
 }
 
+/**
+ * P7-FIND-9 — move keyboard focus to the FIRST branch row currently rendered
+ * (the first `[data-branch-id]` treeitem in document order), if any.
+ *
+ * Used by search.js so that pressing ArrowDown in the open search input steps
+ * INTO the filtered results: the results are ordinary `treeitem`s carrying the
+ * roving `tabindex="-1"`, so without an explicit hop they are unreachable from
+ * the input (Tab would skip to the clear-× / "Load more" instead). Focusing the
+ * first result makes it the single tab stop (via `focusRow` → `onTreeFocusIn` →
+ * `applyRoving`); the standard tree navigation (ArrowUp/Down/Home/End) and
+ * selection.js's Enter/Space activation then take over, so a filtered branch —
+ * INCLUDING one paginated out of the initial slice — is fully keyboard-operable.
+ *
+ * @returns {boolean} True if a branch row was found and received focus.
+ */
+export function focusFirstBranchRow() {
+  const treeList = getTreeList();
+  if (!treeList) return false;
+  const row = treeList.querySelector('[data-branch-id]');
+  if (!row) return false;
+  focusRow(row);
+  return document.activeElement === row;
+}
+
 /* ============================================================================
  * Branch-area visibility — keeps the branch region consistent with the active
  * repository's expand/visibility state during folder collapse/expand.
@@ -892,7 +916,13 @@ function isExpandableRow(row) {
 function getTreeItems(treeList) {
   const list = treeList || getTreeList();
   if (!list) return [];
-  return Array.from(list.querySelectorAll('[role="treeitem"]'));
+  // Exclude [hidden] treeitems so roving/navigation never lands on an invisible
+  // row. The only treeitem that is ever hidden in-place is the "Search" affordance
+  // while the inline input is open (P4-FIND-3); every other hidden row is removed
+  // from the DOM rather than hidden.
+  return Array.from(list.querySelectorAll('[role="treeitem"]')).filter(
+    (el) => !el.hasAttribute('hidden'),
+  );
 }
 
 /** 1-based aria-level of a row (defaults to 1). */
@@ -1087,12 +1117,23 @@ function onTreeKeydown(event) {
     return;
   }
 
-  // Activation: Enter/Space toggles expandable folder/repo rows only. Branch
-  // rows are ignored here so selection.js owns their Enter/Space activation.
+  // Activation: Enter/Space toggles expandable folder/repo rows. Branch rows are
+  // ignored here so selection.js owns their Enter/Space activation.
   if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
-    if (!isExpandableRow(row)) return;
-    event.preventDefault();
-    toggleFolder(row.dataset.id, activeState, activeHandlers);
+    if (isExpandableRow(row)) {
+      event.preventDefault();
+      toggleFolder(row.dataset.id, activeState, activeHandlers);
+      return;
+    }
+    // A non-expandable ACTION row that controls a region (the "Search" affordance,
+    // role="treeitem" data-type="action" aria-controls=…) has no native activation
+    // now that it is a <div>. Route Enter/Space to its own click handler so the
+    // inline search input still opens by keyboard (P4-FIND-3). "New branch" is a
+    // data-type="action" row WITHOUT aria-controls, so it is intentionally excluded.
+    if (row.dataset.type === 'action' && row.hasAttribute('aria-controls')) {
+      event.preventDefault();
+      row.click();
+    }
   }
 }
 

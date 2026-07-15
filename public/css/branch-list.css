@@ -109,19 +109,24 @@ body {
 /* ---------------------------------------------------------------------------
  * BranchTreeContainer — bordered 400px panel (Figma 48966:72006). Flex column of
  * two children: the scrolling list (flex-grow) and the optional pinned footer
- * (flex-none); overflow:hidden clips to the 12px radius. The --branch-tree-*
- * properties centralize the few STRUCTURAL dimensions with no manifest token.
+ * (flex-none); overflow:hidden clips to the 12px radius. All STRUCTURAL
+ * dimensions resolve through --branch-tree-* tokens declared in tokens.css
+ * (no local values here — P10-FIND-10 token centralization).
+ *
+ * Box model (P6-FIND-8): Figma strokeAlign = OUTSIDE (analyze_figma_node
+ * 48966:72006 + pixel measurement) — the 1px border sits OUTSIDE the 1000×400
+ * CONTENT box, so inner = 1000×400 and outer = 1002×402. `box-sizing:content-box`
+ * reproduces this exactly (the global reset makes everything border-box, which
+ * would instead yield inner 998×398 / outer 1000×400). The narrow-viewport
+ * @media(max-width:640px) guard flips this element back to border-box so its
+ * OUTER footprint stays capped at 100% (no horizontal overflow); mobile has no
+ * Figma contract, so the closed no-overflow requirement governs there.
+ * `background:#FFFFFF` is the documented downstream surface value (the Figma
+ * node is transparent because a white parent card sits behind it; this
+ * standalone page has none, so the panel paints its own white interior).
  * ------------------------------------------------------------------------- */
 .branch-tree {
-  --branch-tree-height: 400px;        /* fixed container height (clips overflow) */
-  --branch-tree-width: 1000px;        /* container width (~1000px per Figma)     */
-  --branch-tree-row-height: 32px;     /* fixed row height (border-box) per Figma  */
-  --branch-tree-icon-slot: 24px;      /* slot each 16px icon is centered in       */
-  --branch-tree-icon-size: 16px;      /* rendered icon glyph size                 */
-  --branch-tree-check-size: 24px;     /* confirmation check-circle (larger icon)  */
-  --branch-tree-footer-height: 48px;  /* pinned confirmation footer height        */
-  --branch-tree-footer-gap: 8px;      /* footer icon/text/check gap               */
-
+  box-sizing: content-box;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -130,7 +135,7 @@ body {
   height: var(--branch-tree-height);
   overflow: hidden;
   background: var(--color-surface);
-  border: 1px solid var(--color-border-control);
+  border: var(--border-width-control) solid var(--color-border-control);
   border-radius: var(--radius-container);
   font-family: var(--font-family-base);
 }
@@ -225,8 +230,8 @@ body {
 .new-branch-row:focus-visible,
 .branch-row:focus-visible,
 .search-affordance:focus-visible {
-  outline: 2px solid var(--color-brand-purple);
-  outline-offset: -2px;
+  outline: var(--focus-outline-width) solid var(--color-brand-purple);
+  outline-offset: calc(-1 * var(--focus-outline-width));
 }
 
 /* TreeRow — folder & repository rows (Figma 48966:72073); carry a chevron, so
@@ -245,7 +250,7 @@ body {
  * static end-states only — no transition, matching the Figma design). */
 .tree-row[aria-expanded="true"] .branch-tree__chevron,
 .tree-row[aria-expanded="true"] img[src$="icon_chevron_right.svg"] {
-  transform: rotate(90deg);
+  transform: rotate(var(--rotate-chevron-expanded));
 }
 
 /* NewBranchRow — "New branch" action (Figma 48966:72051). Chevron-less: one
@@ -277,15 +282,17 @@ body {
  * magnifier (asset), bare native input, trailing clear-× button. */
 .search-input-row {
   padding-left: calc(var(--space-row-h) + (var(--row-depth, 0) + 1) * var(--space-indent-step));
-  border-bottom: 1px solid var(--color-border-control);
+  border-bottom: var(--border-width-control) solid var(--color-border-control);
   border-radius: 0;
   cursor: text;
 }
 
 /* Native <input type="search"> stripped of all UA chrome. search-base type
  * (Inter Medium 500) is applied first, then weight is overridden to 400 so the
- * TYPED QUERY renders Inter Regular 400 (Figma query span, §0.2.2); search-base
- * carries no letter tracking. */
+ * TYPED QUERY renders Inter Regular 400 (Figma query span, §0.2.2). The Figma
+ * SearchInputRow text node (48966:70831) carries letter-spacing -0.0188em on
+ * every range (base + ts overrides inherit it), so the typed value must track
+ * -0.0188em, NOT normal (P6-FIND-4). */
 #branch-search-input,
 .search-input-row input[type="search"] {
   flex: 1 1 auto;
@@ -301,15 +308,21 @@ body {
   caret-color: var(--color-text-black);
   font: var(--text-search-base);
   font-weight: var(--text-tree-row-weight);
-  letter-spacing: normal;
+  letter-spacing: var(--text-tree-row-letter-spacing);
 }
 
-/* Placeholder = Inter Medium 500 in muted gray (search-base weight), matching
- * the Figma resting "Search" text; muted color per the tokens.css A11Y note. */
+/* Placeholder "Search" = Inter Regular 400, #999999, 16px/24px, tracking
+ * -0.0188em. Figma-confirmed against SearchInputRow text node 48966:70831 ts1
+ * range (screen 48966:70647): the placeholder word is the ts1 OVERRIDE
+ * (fontStyle Regular / fontWeight 400), NOT the base Medium 500 that governs the
+ * caret. Weight, line-height, and letter-spacing are set explicitly here because
+ * ::placeholder does not reliably inherit them from the input (P6-FIND-7). */
 #branch-search-input::placeholder,
 .search-input-row input[type="search"]::placeholder {
   color: var(--color-text-muted);
-  font-weight: var(--text-search-base-weight);
+  font-weight: var(--text-tree-row-weight);
+  line-height: var(--text-tree-row-line-height);
+  letter-spacing: var(--text-tree-row-letter-spacing);
   opacity: 1;                 /* Firefox dims placeholders by default */
 }
 
@@ -361,8 +374,8 @@ body {
 
 .search-input-row .search-clear:focus-visible,
 .search-input-row button:focus-visible {
-  outline: 2px solid var(--color-brand-purple);
-  outline-offset: 2px;
+  outline: var(--focus-outline-width) solid var(--color-brand-purple);
+  outline-offset: var(--focus-outline-width);
 }
 
 /* BranchRow — branch leaves (Figma 48966:67971). Chevron-less: one extra indent
@@ -410,14 +423,18 @@ body {
   min-height: var(--branch-tree-footer-height);
   padding: var(--space-row-h);
   background: var(--color-surface);   /* opaque so scrolled rows don't show through */
-  border-top: 1px solid var(--color-border-control);
+  border-top: var(--border-width-control) solid var(--color-border-control);
   border-radius: var(--radius-footer-bottom);
   color: var(--color-text-primary);
   font: var(--text-tree-row);
   letter-spacing: var(--text-tree-row-letter-spacing);
 }
 
-/* Full branch path fills the space between the git-branch icon and check-circle. */
+/* Full branch path fills the space between the git-branch icon and check-circle.
+ * At the ~1000px Figma width the path (~420px) fits on one line; the ellipsis is
+ * a desktop safety net that never triggers at that width. Mobile widths cannot
+ * fit it on one line, so the narrow-viewport block below removes the truncation
+ * and lets the full path wrap (P6-FIND-6). */
 .branch-tree__footer-path {
   flex: 1 1 auto;
   min-width: 0;
@@ -425,6 +442,58 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+ * Narrow-viewport (mobile) adaptations. The Figma design is authored at 1440px
+ * only; these rules keep the two text surfaces that overflow at phone widths
+ * readable WITHOUT widening the fixed-width panel (no horizontal overflow) and
+ * WITHOUT changing the desktop rendering (the >640px cascade is untouched —
+ * 768/1280/1440/1920 all render exactly as before).
+ *
+ *   P6-FIND-5 — EmptyState "Branch not found" must stay a single 32px row
+ *     (Figma 48966:70337). At the desktop LABEL-column indent the message wraps
+ *     to two lines inside the ~309px mobile panel interior. At mobile it aligns
+ *     one indent-pair shallower (drops the +2 label offset -> the branch ICON
+ *     column) and is pinned to a single line via white-space:nowrap, so it fits
+ *     without clipping and the row collapses back to 32px.
+ *
+ *   P6-FIND-6 — ConfirmationFooter must show the FULL branch path (R6 — the
+ *     reconciled Figma specifies NO truncation). The ~420px path cannot fit on
+ *     one line in the mobile panel, so the desktop ellipsis/nowrap is replaced
+ *     with wrapping (overflow-wrap:anywhere handles the slash-delimited path,
+ *     which has no whitespace break opportunities). The git-branch icon and the
+ *     check-circle top-align to the first path line; the footer grows via its
+ *     existing min-height while the panel width stays fixed (no horizontal
+ *     overflow). selection.js already writes the full path into textContent, so
+ *     this is a presentation-only fix.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  /* P6-FIND-8 guard: the desktop panel uses box-sizing:content-box so its 1px
+   * border renders OUTSIDE the 1000×400 content (exact Figma outer 1002×402).
+   * On narrow viewports there is no Figma contract and the panel is width-capped
+   * by max-width:100%; flipping back to border-box keeps the OUTER footprint
+   * (border included) within 100%, so the border never adds width and the closed
+   * no-horizontal-overflow requirement is preserved at 375/768. */
+  .branch-tree {
+    box-sizing: border-box;
+  }
+
+  .empty-state {
+    padding-left: calc(var(--space-row-h) + var(--row-depth, 0) * var(--space-indent-step));
+    white-space: nowrap;
+  }
+
+  .branch-tree__footer {
+    align-items: flex-start;
+  }
+
+  .branch-tree__footer-path {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -485,8 +554,8 @@ body {
   top: auto;
   z-index: 1;
   background: var(--color-surface);
-  outline: 2px solid var(--color-brand-purple);
-  outline-offset: -2px;
+  outline: var(--focus-outline-width) solid var(--color-brand-purple);
+  outline-offset: calc(-1 * var(--focus-outline-width));
 }
 
 /* [hidden] enforcement — display:flex/grid otherwise defeats the UA

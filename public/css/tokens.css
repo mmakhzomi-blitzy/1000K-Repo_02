@@ -79,4 +79,29 @@
   --radius-container: 12px;
   --radius-footer-bottom: 0 0 12px 12px;  /* footer: bottom corners only */
   --radius-row: 0;                          /* rows stay square even when highlighted */
+
+  /* Border widths — control strokes: the panel (all four sides), the search
+   * input underline (bottom only), and the confirmation footer (top only) all
+   * render a 1px #D9D9D9 line per Figma. */
+  --border-width-control: 1px;
+
+  /* Focus ring — keyboard-only a11y outline width (non-visual layer, does not
+   * alter the resting Figma design). Offsets derive from this via calc(). */
+  --focus-outline-width: 2px;
+
+  /* Transform — expanded folders rotate the un-rotated chevron asset 90°
+   * (static end-state only; no transition, matching the Figma design). */
+  --rotate-chevron-expanded: 90deg;
+
+  /* Component structural dimensions (Figma 48966:72006 branch-list panel).
+   * Centralized in the token layer so every VISIBLE dimension resolves through
+   * a var(--…); branch-list.css consumes each token and defines no local values. */
+  --branch-tree-height: 400px;        /* fixed container CONTENT height (clips overflow) */
+  --branch-tree-width: 1000px;        /* container CONTENT width (~1000px per Figma)     */
+  --branch-tree-row-height: 32px;     /* fixed row height per Figma                       */
+  --branch-tree-icon-slot: 24px;      /* slot each 16px icon is centered in               */
+  --branch-tree-icon-size: 16px;      /* rendered icon glyph size                         */
+  --branch-tree-check-size: 24px;     /* confirmation check-circle (larger icon)          */
+  --branch-tree-footer-height: 48px;  /* pinned confirmation footer height                */
+  --branch-tree-footer-gap: 8px;      /* footer icon/text/check gap                       */
 }
