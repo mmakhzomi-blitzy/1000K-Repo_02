@@ -1,0 +1,17 @@
+# Generated QA / code-review artifacts (review reports, screenshots, screen
+# recordings). Produced by tooling during review; not part of the delivered
+# feature. Excluded for delivery cleanliness (F-11) — do NOT delete the folder,
+# it holds live QA data.
+blitzy/
+
+# Ad-hoc validation test files (created only during local validation, never
+# part of the delivery).
+blitzy_adhoc_test_*
+
+# Node.js dependencies. The project is intentionally zero-dependency (no
+# runtime deps in package.json); this guards against accidentally committing an
+# installed tree if packages are ever added locally.
+node_modules/
+
+# OS / editor cruft
+.DS_Store

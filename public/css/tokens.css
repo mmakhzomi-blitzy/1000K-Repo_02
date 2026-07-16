@@ -1,0 +1,107 @@
+/* tokens.css — Design token layer for "Branch pagination + search".
+ * Loaded FIRST (before branch-list.css); every component value resolves to a
+ * var(--…) declared here. Values are the exact Figma Token Manifest (§0.2.3);
+ * token names are a contract with branch-list.css and must not be renamed.
+ * Plain CSS only: no preprocessor, no build step, no CDN. */
+
+/* Self-hosted Inter (SIL OFL-1.1; files + license under ../assets/fonts/).
+ * Relative src only — no external font CDN. font-display: swap renders the
+ * system fallback immediately, then swaps Inter in when loaded. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+}
+
+:root {
+  /* Colors — exact Figma hex. */
+  --color-surface: #FFFFFF;
+  --color-border-control: #D9D9D9;
+  --color-brand-purple: #5B39F3;
+  --color-text-primary: #333333;
+  --color-text-black: #000000;
+  /* BLITZY [A11Y]: muted text (placeholder + "Branch not found") is the exact
+   * Figma value #999999; on #FFFFFF it computes ~2.85:1 and on #F2F0FE ~2.53:1,
+   * below WCAG AA 4.5:1 for normal text. Figma is authoritative, so the value
+   * is preserved exactly and flagged for designer review rather than altered. */
+  --color-text-muted: #999999;
+  --color-row-highlight: #F2F0FE;  /* recurring hover + selected row background */
+  --color-page-bg: #F5F5F5;
+  --color-border-card: #E9E9E9;    /* manifest completeness; unused by the feature */
+
+  /* Typography — Inter family. Each role is exposed as a `font` shorthand plus
+   * individual sub-property tokens (the shorthand cannot carry letter-spacing).
+   * --font-family-base is the only non-manifest token: it makes Inter usable
+   * with a graceful system fallback. */
+  --font-family-base: Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  --text-tree-row-weight: 400;
+  --text-tree-row-size: 16px;
+  --text-tree-row-line-height: 1.5em;
+  --text-tree-row-letter-spacing: -0.0188em;
+  --text-tree-row: 400 16px/1.5em var(--font-family-base);
+
+  --text-search-base-weight: 500;
+  --text-search-base-size: 16px;
+  --text-search-base-line-height: 1.5em;
+  --text-search-base: 500 16px/1.5em var(--font-family-base);
+
+  --text-heading-h5-weight: 600;
+  --text-heading-h5-size: 24px;
+  --text-heading-h5-line-height: 1.3em;
+  --text-heading-h5: 600 24px/1.3em var(--font-family-base);
+
+  /* Spacing — exact px. */
+  --space-row-v: 4px;
+  --space-row-h: 12px;
+  --space-row-gap: 4px;
+  --space-indent-step: 28px;   /* per tree level: 24px icon slot + 4px gap */
+  --space-list-pad-v: 12px;
+  --space-panel: 32px;
+
+  /* Radius — exact. */
+  --radius-container: 12px;
+  --radius-footer-bottom: 0 0 12px 12px;  /* footer: bottom corners only */
+  --radius-row: 0;                          /* rows stay square even when highlighted */
+
+  /* Border widths — control strokes: the panel (all four sides), the search
+   * input underline (bottom only), and the confirmation footer (top only) all
+   * render a 1px #D9D9D9 line per Figma. */
+  --border-width-control: 1px;
+
+  /* Focus ring — keyboard-only a11y outline width (non-visual layer, does not
+   * alter the resting Figma design). Offsets derive from this via calc(). */
+  --focus-outline-width: 2px;
+
+  /* Transform — expanded folders rotate the un-rotated chevron asset 90°
+   * (static end-state only; no transition, matching the Figma design). */
+  --rotate-chevron-expanded: 90deg;
+
+  /* Component structural dimensions (Figma 48966:72006 branch-list panel).
+   * Centralized in the token layer so every VISIBLE dimension resolves through
+   * a var(--…); branch-list.css consumes each token and defines no local values. */
+  --branch-tree-height: 400px;        /* fixed container CONTENT height (clips overflow) */
+  --branch-tree-width: 1000px;        /* container CONTENT width (~1000px per Figma)     */
+  --branch-tree-row-height: 32px;     /* fixed row height per Figma                       */
+  --branch-tree-icon-slot: 24px;      /* slot each 16px icon is centered in               */
+  --branch-tree-icon-size: 16px;      /* rendered icon glyph size                         */
+  --branch-tree-check-size: 24px;     /* confirmation check-circle (larger icon)          */
+  --branch-tree-footer-height: 48px;  /* pinned confirmation footer height                */
+  --branch-tree-footer-gap: 8px;      /* footer icon/text/check gap                       */
+}
